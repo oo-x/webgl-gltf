@@ -1,124 +1,126 @@
-import * as shader from './shaders/shader-loader';
-import * as defaultShader from './shaders/default-shader';
-import * as camera from './camera';
-import * as inputs from './inputs';
-import * as cubemap from './cubemap';
-import { renderModel } from './renderer';
-import { DefaultShader } from './shaders/default-shader';
+import * as shader from './shaders/shader-loader'
+import * as defaultShader from './shaders/default-shader'
+import * as camera from './camera'
+import * as inputs from './inputs'
+import * as cubemap from './cubemap'
+import { renderModel } from './renderer'
+import { DefaultShader } from './shaders/default-shader'
 
-import * as gltf from './webgl-gltf';
+import * as gltf from './webgl-gltf'
 
-const canvas = document.getElementById('canvas') as HTMLCanvasElement;
-const gl = canvas.getContext('webgl') as WebGLRenderingContext;
+const canvas = document.getElementById('canvas') as HTMLCanvasElement
+const gl = canvas.getContext('webgl') as WebGLRenderingContext
 
-const track = 'track';
-const blendTime = 300;
-let lastFrame = 0;
+const track = 'track'
+const blendTime = 300
+let lastFrame = 0
 
 const cam = {
-    rY: 0.0,
-    rX: 0.0,
-    distance: 3.0,
-} as camera.Camera;
+	rY: 0.0,
+	rX: 0.0,
+	distance: 3.0,
+} as camera.Camera
 
 const setSize = () => {
-    const devicePixelRatio = window.devicePixelRatio || 1;
+	const devicePixelRatio = window.devicePixelRatio || 1
 
-    canvas.width = window.innerWidth * devicePixelRatio;
-    canvas.height = window.innerHeight * devicePixelRatio;
-    gl.viewport(0, 0, canvas.width, canvas.height);
+	canvas.width = window.innerWidth * devicePixelRatio
+	canvas.height = window.innerHeight * devicePixelRatio
+	gl.viewport(0, 0, canvas.width, canvas.height)
 }
 
 if (!gl) {
-    alert('WebGL not available')
+	alert('WebGL not available')
 }
 
 const listAnimations = (models: gltf.Model[]) => {
-    models.forEach(model => {
-        if (Object.keys(model.animations).length === 0) return;
+	models.forEach((model) => {
+		if (Object.keys(model.animations).length === 0) return
 
-        gltf.pushAnimation(track, 'default', model.name, Object.keys(model.animations)[0]);
+		gltf.pushAnimation(track, 'default', model.name, Object.keys(model.animations)[0])
 
-        const ui = document.getElementById('ui') as HTMLElement;
-        Object.keys(model.animations).forEach(a => {
-            const btn = document.createElement('button');
-            btn.innerText = a;
-            btn.addEventListener('click', () => gltf.pushAnimation(track, 'default', model.name, a));
-            ui.appendChild(btn);
-        });
-    });
-};
+		const ui = document.getElementById('ui') as HTMLElement
+		Object.keys(model.animations).forEach((a) => {
+			const btn = document.createElement('button')
+			btn.innerText = a
+			btn.addEventListener('click', () => gltf.pushAnimation(track, 'default', model.name, a))
+			ui.appendChild(btn)
+		})
+	})
+}
 
 const render = (uniforms: DefaultShader, models: gltf.Model[]) => {
-    gl.clear(gl.COLOR_BUFFER_BIT);
+	gl.clear(gl.COLOR_BUFFER_BIT)
 
-    const cameraMatrix = camera.update(cam, canvas.width, canvas.height);
-    gl.uniform3f(uniforms.cameraPosition, cameraMatrix.position[0], cameraMatrix.position[1], cameraMatrix.position[2]);
-    gl.uniformMatrix4fv(uniforms.pMatrix, false, cameraMatrix.pMatrix);
-    gl.uniformMatrix4fv(uniforms.vMatrix, false, cameraMatrix.vMatrix);
+	const cameraMatrix = camera.update(cam, canvas.width, canvas.height)
+	gl.uniform3f(uniforms.cameraPosition, cameraMatrix.position[0], cameraMatrix.position[1], cameraMatrix.position[2])
+	gl.uniformMatrix4fv(uniforms.pMatrix, false, cameraMatrix.pMatrix)
+	gl.uniformMatrix4fv(uniforms.vMatrix, false, cameraMatrix.vMatrix)
 
-    models.forEach(model => {
-        const animation = gltf.getActiveAnimations('default', model.name);
+	models.forEach((model) => {
+		const animation = gltf.getActiveAnimations('default', model.name)
 
-        if (animation) {
-            const animationTransforms = gltf.getAnimationTransforms(model, animation, blendTime);
-            gltf.applyToSkin(model, animationTransforms).forEach((x, i) => {
-                gl.uniformMatrix4fv(uniforms.jointTransform[i], false, x);
-            });
+		if (animation) {
+			const animationTransforms = gltf.getAnimationTransforms(model, animation, blendTime)
+			gltf.applyToSkin(model, animationTransforms).forEach((x, i) => {
+				gl.uniformMatrix4fv(uniforms.jointTransform[i], false, x)
+			})
 
-            gl.uniform1i(uniforms.isAnimated, 1);
-        } else {
-            gl.uniform1i(uniforms.isAnimated, 0);
-        }
+			gl.uniform1i(uniforms.isAnimated, 1)
+		} else {
+			gl.uniform1i(uniforms.isAnimated, 0)
+		}
 
-        renderModel(gl, model, model.rootNode, model.nodes[model.rootNode].localBindTransform, uniforms);
-    });
+		renderModel(gl, model, model.rootNode, model.nodes[model.rootNode].localBindTransform, uniforms)
+	})
 
-    gltf.advanceAnimation(performance.now() - lastFrame);
+	gltf.advanceAnimation(performance.now() - lastFrame)
 
-    requestAnimationFrame(() => {
-        render(uniforms, models);
-        lastFrame = performance.now();
-    });
-};
+	requestAnimationFrame(() => {
+		render(uniforms, models)
+		lastFrame = performance.now()
+	})
+}
 
 const startup = async () => {
-    gl.clearColor(0.3, 0.3, 0.3, 1);
-    gl.enable(gl.DEPTH_TEST);
+	gl.clearColor(0.3, 0.3, 0.3, 1)
+	gl.enable(gl.DEPTH_TEST)
 
-    window.onresize = () => { setSize(); };
-    setSize();
+	window.onresize = () => {
+		setSize()
+	}
+	setSize()
 
-    const program = shader.createProgram(gl);
-    gl.attachShader(program, await shader.loadShader(gl, 'default.vert', gl.VERTEX_SHADER));
-    gl.attachShader(program, await shader.loadShader(gl, 'default.frag', gl.FRAGMENT_SHADER));
-    shader.linkProgram(gl, program);
+	const program = shader.createProgram(gl)
+	gl.attachShader(program, await shader.loadShader(gl, 'default.vert', gl.VERTEX_SHADER))
+	gl.attachShader(program, await shader.loadShader(gl, 'default.frag', gl.FRAGMENT_SHADER))
+	shader.linkProgram(gl, program)
 
-    const uniforms = defaultShader.getUniformLocations(gl, program);
+	const uniforms = defaultShader.getUniformLocations(gl, program)
 
-    const environment = await cubemap.load(gl);
-    const urlParams = new URLSearchParams(window.location.search);
-    const modelNames = urlParams.get('model') || 'robot';
-    const models = await Promise.all(modelNames.split(',').map(m => gltf.loadModel(gl, `/models/${m}/${m}.gltf`)));
-    listAnimations(models);
-    console.log(models);
+	const environment = await cubemap.load(gl)
+	const urlParams = new URLSearchParams(window.location.search)
+	const modelNames = urlParams.get('model') || 'robot'
+	const models = await Promise.all(modelNames.split(',').map((m) => gltf.loadModel(gl, `/models/${m}/${m}.gltf`)))
+	listAnimations(models)
+	console.log(models)
 
-    cubemap.bind(gl, environment, uniforms.brdfLut, uniforms.environmentDiffuse, uniforms.environmentSpecular);
+	cubemap.bind(gl, environment, uniforms.brdfLut, uniforms.environmentDiffuse, uniforms.environmentSpecular)
 
-    document.getElementById('loading')?.remove();
+	document.getElementById('loading')?.remove()
 
-    render(uniforms, models);
-};
+	render(uniforms, models)
+}
 
 const rotate = (delta: inputs.Position) => {
-    cam.rX += delta.y;
-    cam.rY += delta.x;
-};
+	cam.rX += delta.y
+	cam.rY += delta.x
+}
 
 const zoom = (delta: number) => {
-    cam.distance *= 1.0 + delta;
-    if (cam.distance < 0.0) cam.distance = 0.0;
-};
+	cam.distance *= 1.0 + delta
+	if (cam.distance < 0.0) cam.distance = 0.0
+}
 
-inputs.listen(canvas, rotate, zoom);
-startup();
+inputs.listen(canvas, rotate, zoom)
+startup()
