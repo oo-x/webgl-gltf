@@ -12,10 +12,10 @@ export {
     pushAnimation,
     getActiveAnimations,
     advanceAnimation,
-    ActiveAnimation,
+    type ActiveAnimation,
  } from './animation';
 
- export {
+ export type {
      Model,
      GLBuffer,
      Node,
