@@ -1,15 +1,16 @@
+import { mat4, vec3 } from 'gl-matrix'
+
 import * as shader from './shaders/shader-loader'
 import * as defaultShader from './shaders/default-shader'
-import * as camera from './camera'
 import * as inputs from './inputs'
 import * as cubemap from './cubemap'
 import { renderModel } from './renderer'
-import { DefaultShader } from './shaders/default-shader'
+import type { DefaultShader } from './shaders/default-shader'
 
 import * as gltf from './webgl-gltf'
 
 const canvas = document.getElementById('canvas') as HTMLCanvasElement
-const gl = canvas.getContext('webgl') as WebGLRenderingContext
+const gl = canvas.getContext('webgl2') as WebGL2RenderingContext
 
 const track = 'track'
 const blendTime = 300
@@ -19,7 +20,7 @@ const cam = {
 	rY: 0.0,
 	rX: 0.0,
 	distance: 3.0,
-} as camera.Camera
+}
 
 const setSize = () => {
 	const devicePixelRatio = window.devicePixelRatio || 1
@@ -52,10 +53,20 @@ const listAnimations = (models: gltf.Model[]) => {
 const render = (uniforms: DefaultShader, models: gltf.Model[]) => {
 	gl.clear(gl.COLOR_BUFFER_BIT)
 
-	const cameraMatrix = camera.update(cam, canvas.width, canvas.height)
-	gl.uniform3f(uniforms.cameraPosition, cameraMatrix.position[0], cameraMatrix.position[1], cameraMatrix.position[2])
-	gl.uniformMatrix4fv(uniforms.pMatrix, false, cameraMatrix.pMatrix)
-	gl.uniformMatrix4fv(uniforms.vMatrix, false, cameraMatrix.vMatrix)
+	const cx = cam.distance * Math.sin(-cam.rY) * Math.cos(-cam.rX)
+	const cy = cam.distance * Math.sin(cam.rX)
+	const cz = cam.distance * Math.cos(-cam.rY) * Math.cos(-cam.rX)
+
+	const pMatrix = mat4.create()
+	const vMatrix = mat4.create()
+	mat4.translate(vMatrix, vMatrix, vec3.fromValues(0.0, 0.0, -cam.distance))
+	mat4.rotateX(vMatrix, vMatrix, cam.rX)
+	mat4.rotateY(vMatrix, vMatrix, cam.rY)
+	mat4.perspective(pMatrix, 45.0, canvas.width / canvas.height, 0.1, 100.0)
+
+	gl.uniform3f(uniforms.cameraPosition, cx, cy, cz)
+	gl.uniformMatrix4fv(uniforms.pMatrix, false, pMatrix)
+	gl.uniformMatrix4fv(uniforms.vMatrix, false, vMatrix)
 
 	models.forEach((model) => {
 		const animation = gltf.getActiveAnimations('default', model.name)
@@ -86,9 +97,7 @@ const startup = async () => {
 	gl.clearColor(0.3, 0.3, 0.3, 1)
 	gl.enable(gl.DEPTH_TEST)
 
-	window.onresize = () => {
-		setSize()
-	}
+	window.onresize = () => setSize()
 	setSize()
 
 	const program = shader.createProgram(gl)
@@ -104,11 +113,8 @@ const startup = async () => {
 	const models = await Promise.all(modelNames.split(',').map((m) => gltf.loadModel(gl, `/models/${m}/${m}.gltf`)))
 	listAnimations(models)
 	console.log(models)
-
 	cubemap.bind(gl, environment, uniforms.brdfLut, uniforms.environmentDiffuse, uniforms.environmentSpecular)
-
 	document.getElementById('loading')?.remove()
-
 	render(uniforms, models)
 }
 
