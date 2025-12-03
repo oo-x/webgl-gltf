@@ -1,6 +1,6 @@
 import { mat4, vec3, quat } from 'gl-matrix'
-import { KeyFrame, Model, Skin, Transform } from './types/model'
-import { ActiveAnimation } from './animation'
+import type { KeyFrame, Model, Skin, Transform } from './types/model'
+import type { ActiveAnimation } from './animation'
 
 const getPreviousAndNextKeyFrame = (keyFrames: KeyFrame[], animationTime: number) => {
 	let next = keyFrames[0]
@@ -84,9 +84,9 @@ const applyTransform = (
 		appliedTransforms[transformIndex] = matrix
 	}
 
-	node.children.forEach((childNode) => {
+	for (const childNode of node.children) {
 		applyTransform(model, appliedTransforms, transforms, mat4.clone(matrix), skin, childNode, inverse)
-	})
+	}
 }
 
 /**
@@ -102,34 +102,29 @@ export const getAnimationTransforms = (
 ) => {
 	const transforms: { [key: number]: mat4 } = {}
 
-	Object.keys(activeAnimations).forEach((track) => {
-		activeAnimations[track].forEach((rootAnimation) => {
+	for (const animations of Object.values(activeAnimations)) {
+		for (const rootAnimation of animations) {
 			const blend = -((rootAnimation.elapsed - blendTime) / blendTime)
-
-			Object.keys(model.animations[rootAnimation.key]).forEach((c) => {
-				const transform = get(model.animations[rootAnimation.key][c], rootAnimation.elapsed)
-
-				activeAnimations[track].forEach((ac) => {
-					if (rootAnimation.key == ac.key || blend <= 0) return
-
+			for (const [c, anim] of Object.entries(model.animations[rootAnimation.key])) {
+				const transform = get(anim, rootAnimation.elapsed)
+				for (const ac of animations) {
+					if (rootAnimation.key == ac.key || blend <= 0) continue
 					const cTransform = get(model.animations[ac.key][c], ac.elapsed)
 					vec3.lerp(transform.t, transform.t, cTransform.t, blend)
 					quat.slerp(transform.r, transform.r, cTransform.r, blend)
 					vec3.lerp(transform.s, transform.s, cTransform.s, blend)
-				})
+				}
 
 				const localTransform = mat4.create()
 				const rotTransform = mat4.create()
-				mat4.fromQuat(rotTransform, transform.r as quat)
-
-				mat4.translate(localTransform, localTransform, transform.t as vec3)
+				mat4.fromQuat(rotTransform, transform.r)
+				mat4.translate(localTransform, localTransform, transform.t)
 				mat4.multiply(localTransform, localTransform, rotTransform)
-				mat4.scale(localTransform, localTransform, transform.s as vec3)
-
+				mat4.scale(localTransform, localTransform, transform.s)
 				transforms[c] = localTransform
-			})
-		})
-	})
+			}
+		}
+	}
 
 	return transforms
 }
@@ -143,10 +138,10 @@ export const getAnimationTransforms = (
 export const applyToSkin = (model: Model, transforms: { [key: number]: mat4 }, inverse = true) => {
 	const appliedTransforms: mat4[] = []
 
-	model.skins.forEach((skin) => {
+	for (const skin of model.skins) {
 		const root = model.rootNode
 		applyTransform(model, appliedTransforms, transforms, mat4.create(), skin, root, inverse)
-	})
+	}
 
 	return appliedTransforms
 }

@@ -1,8 +1,8 @@
 import * as gltf from './types/gltf'
 import { mat4, quat, vec3, vec4 } from 'gl-matrix'
-import { createMat4FromArray, applyRotationFromQuat } from './mat.js'
-import type { Channel, Node, Mesh, Model, KeyFrame, Skin, Material, GLBuffer, Animation } from './types/model'
+import { createMat4FromArray } from './mat.js'
 import type { GlTf, Accessor } from './types/gltf'
+import type { Channel, Node, Mesh, Model, KeyFrame, Skin, Material, GLBuffer, Animation } from './types/model'
 
 type GLContext = WebGLRenderingContext | WebGL2RenderingContext
 
@@ -132,7 +132,13 @@ const loadNodes = (index: number, node: gltf.Node): Node => {
 
 	if (node.translation !== undefined)
 		mat4.translate(transform, transform, vec3.fromValues(node.translation[0], node.translation[1], node.translation[1]))
-	if (node.rotation !== undefined) applyRotationFromQuat(transform, node.rotation)
+
+	if (node.rotation !== undefined) {
+		const mat = mat4.create()
+		mat4.fromQuat(mat, node.rotation)
+		mat4.multiply(transform, mat, transform)
+	}
+
 	if (node.scale !== undefined)
 		mat4.scale(transform, transform, vec3.fromValues(node.scale[0], node.scale[1], node.scale[1]))
 	if (node.matrix !== undefined) createMat4FromArray(node.matrix)

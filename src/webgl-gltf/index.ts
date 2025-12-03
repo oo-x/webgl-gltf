@@ -1,8 +1,4 @@
-export { loadModel, dispose } from './gltf'
-
-export { getAnimationTransforms, applyToSkin } from './animator'
-
-export { pushAnimation, getActiveAnimations, advanceAnimation, type ActiveAnimation } from './animation'
+export type { ActiveAnimation } from './animation'
 
 export type {
 	Model,
