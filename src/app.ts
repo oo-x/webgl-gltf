@@ -2,11 +2,12 @@ import { mat4, vec3 } from 'gl-matrix'
 import { loadModel } from './webgl-gltf/gltf'
 import { getAnimationTransforms, applyToSkin } from './webgl-gltf/animator'
 import { pushAnimation, getActiveAnimations, advanceAnimation } from './webgl-gltf/animation'
+import { init } from './gl.js'
 
 import type { GLBuffer } from './webgl-gltf/types/model'
 
 const canvas = document.getElementById('canvas') as HTMLCanvasElement
-const gl = canvas.getContext('webgl2') as WebGL2RenderingContext
+const { gl, program, attributes } = init(canvas)
 
 const track = 'track'
 const blendTime = 300
@@ -18,33 +19,21 @@ const cam = {
 	distance: 3.0,
 }
 
-if (!gl) {
-	alert('WebGL not available')
-}
-
 const camPos = [0, 0, 0]
 const pMatrix = mat4.create()
 const vMatrix = mat4.create()
 
 const names = ['right', 'left', 'top', 'bottom', 'front', 'back']
 
-gl.clearColor(0.3, 0.3, 0.3, 1)
-gl.enable(gl.DEPTH_TEST)
-
 window.onresize = () => setSize()
 setSize()
-
-const program = createProgram(gl)
-gl.attachShader(program, await loadShader(gl, 'default.vert', gl.VERTEX_SHADER))
-gl.attachShader(program, await loadShader(gl, 'default.frag', gl.FRAGMENT_SHADER))
-linkProgram(gl, program)
 
 const uniforms = getUniformLocations(gl, program)
 
 const diffuseTextures = await Promise.all(names.map((n) => getImage(`environment/diffuse_${n}.jpg`)))
 const specularTextures = await Promise.all(names.map((n) => getImage(`environment/specular_${n}.jpg`)))
-const diffuse = createCubeMap(gl, diffuseTextures)
-const specular = createCubeMap(gl, specularTextures)
+const diffuse = createCubeMap(diffuseTextures)
+const specular = createCubeMap(specularTextures)
 const brdfLutTexture = await getImage('environment/brdf_lut.png')
 const brdfLut = gl.createTexture()
 
@@ -185,7 +174,6 @@ canvas.addEventListener('touchend', (event) => {
 	lastPosition = undefined
 })
 
-
 async function getImage(uri: string) {
 	return new Promise<HTMLImageElement>((resolve) => {
 		const img = new Image()
@@ -194,12 +182,12 @@ async function getImage(uri: string) {
 	})
 }
 
-function createCubeMap(gl: WebGLRenderingContext, textures: HTMLImageElement[]) {
+function createCubeMap(textures: HTMLImageElement[]) {
 	const cubeMap = gl.createTexture()
 	gl.bindTexture(gl.TEXTURE_CUBE_MAP, cubeMap)
-	textures.forEach((t, i) => {
+	for (const [i, t] of textures.entries()) {
 		gl.texImage2D(gl.TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, t)
-	})
+	}
 	gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR)
 	gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
 	gl.generateMipmap(gl.TEXTURE_CUBE_MAP)
@@ -211,39 +199,6 @@ function setSize() {
 	canvas.width = window.innerWidth * devicePixelRatio
 	canvas.height = window.innerHeight * devicePixelRatio
 	gl.viewport(0, 0, canvas.width, canvas.height)
-}
-
-async function loadShader(gl: WebGLRenderingContext, name: string, type: number) {
-	const response = await fetch(`/shaders/${name}`)
-	const content = await response.text()
-
-	const shader = gl.createShader(type)
-	if (shader === null) throw new Error('gl.createShader returned null!')
-
-	gl.shaderSource(shader, content)
-	gl.compileShader(shader)
-
-	if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-		console.error(`Failed to load shader ${name}`)
-		console.error(gl.getShaderInfoLog(shader))
-	}
-
-	return shader
-}
-
-function createProgram(gl: WebGLRenderingContext) {
-	const program = gl.createProgram()
-	if (program === null) throw new Error('gl.createProgram returned null!')
-	return program
-}
-
-function linkProgram(gl: WebGLRenderingContext, program: WebGLProgram) {
-	gl.linkProgram(program)
-	if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-		console.error(gl.getProgramInfoLog(program))
-	}
-
-	gl.useProgram(program)
 }
 
 function getUniformLocations(gl: WebGLRenderingContext, program: WebGLProgram) {
@@ -281,13 +236,6 @@ function getUniformLocations(gl: WebGLRenderingContext, program: WebGLProgram) {
 		jointTransform[i] = gl.getUniformLocation(program, `uJointTransform[${i}]`)!
 	}
 
-	const position = gl.getAttribLocation(program, 'vPosition')
-	const normal = gl.getAttribLocation(program, 'vNormal')
-	const tangent = gl.getAttribLocation(program, 'vTangent')
-	const texCoord = gl.getAttribLocation(program, 'vTexCoord')
-	const joints = gl.getAttribLocation(program, 'vJoints')
-	const weights = gl.getAttribLocation(program, 'vWeights')
-
 	return {
 		pMatrix,
 		vMatrix,
@@ -312,13 +260,6 @@ function getUniformLocations(gl: WebGLRenderingContext, program: WebGLProgram) {
 		brdfLut,
 		environmentDiffuse,
 		environmentSpecular,
-
-		position,
-		normal,
-		tangent,
-		texCoord,
-		joints,
-		weights,
 	}
 }
 
@@ -361,10 +302,7 @@ function applyTexture(
 	if (enabledUniform !== undefined) gl.uniform1i(enabledUniform, texture ? 1 : 0)
 }
 
-function renderModel(
-	node: number,
-	transform: mat4,
-) {
+function renderModel(node: number, transform: mat4) {
 	if (model.nodes[node].mesh !== undefined) {
 		const mesh = model.meshes[model.nodes[node].mesh!]
 		const material = model.materials[mesh.material]
@@ -399,12 +337,12 @@ function renderModel(
 			)
 		}
 
-		bindBuffer(gl, uniforms.position, mesh.positions)
-		bindBuffer(gl, uniforms.normal, mesh.normals)
-		bindBuffer(gl, uniforms.tangent, mesh.tangents)
-		bindBuffer(gl, uniforms.texCoord, mesh.texCoord)
-		bindBuffer(gl, uniforms.joints, mesh.joints)
-		bindBuffer(gl, uniforms.weights, mesh.weights)
+		bindBuffer(gl, attributes.position, mesh.positions)
+		bindBuffer(gl, attributes.normal, mesh.normals)
+		bindBuffer(gl, attributes.tangent, mesh.tangents)
+		bindBuffer(gl, attributes.texCoord, mesh.texCoord)
+		bindBuffer(gl, attributes.joints, mesh.joints)
+		bindBuffer(gl, attributes.weights, mesh.weights)
 
 		gl.uniformMatrix4fv(uniforms.mMatrix, false, transform)
 
