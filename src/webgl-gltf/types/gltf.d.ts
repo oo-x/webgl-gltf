@@ -352,7 +352,7 @@ export interface MaterialPbrMetallicRoughness {
 	/**
 	 * The material's base color factor.
 	 */
-	baseColorFactor?: number[]
+	baseColorFactor?: [number, number, number, number]
 	/**
 	 * The base color texture.
 	 */
@@ -421,7 +421,7 @@ export interface Material {
 	/**
 	 * The emissive color of the material.
 	 */
-	emissiveFactor?: number[]
+	emissiveFactor?: [number, number, number]
 	/**
 	 * The alpha rendering mode of the material.
 	 */

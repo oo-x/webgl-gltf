@@ -53,9 +53,9 @@ export function mapObject(o, t) {
  * @template K
  * @template T
  * @param {readonly K[]} a
- * @param {(key: K) => T} t
+ * @param {(key: K, idx: number) => T} t
  * @return {{ [Key in K]: T }}
  */
 export function mapToObject(a, t) {
-	return Object.fromEntries(a.map((k) => [k, t(k)]))
+	return Object.fromEntries(a.map((k, i) => [k, t(k, i)]))
 }

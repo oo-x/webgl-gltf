@@ -1,15 +1,19 @@
 import { mat4, vec3 } from 'gl-matrix'
 import { loadModel } from './webgl-gltf/gltf'
-import { getAnimationTransforms, applyToSkin } from './webgl-gltf/animator'
 import { pushAnimation, getActiveAnimations, advanceAnimation } from './webgl-gltf/animation'
 
 import * as utils from './utils.js'
-import { init, bindBuffer, createTexture, applyTexture } from './gl.js'
+import { setCanvas } from './gl/context.js'
+import { init, attribNames } from './gl.js'
+import { createTexture, applyTexture } from './gl/texture.js'
+import { getAnimationTransforms } from './anim/transform.js'
+import type { Skin } from './webgl-gltf/types/model'
 
 const track = 'track'
 const blendTime = 300
 const names = ['right', 'left', 'top', 'bottom', 'front', 'back']
 
+setCanvas('#canvas')
 const canvas = document.getElementById('canvas') as HTMLCanvasElement
 const { gl, uniforms, attributes } = init(canvas)
 
@@ -45,11 +49,11 @@ if (anims.length) {
 }
 console.log(model)
 
-const brdf = createTexture(gl, gl.TEXTURE_2D, [[gl.TEXTURE_2D, brdfLutTexture]])
+const brdf = createTexture(gl.TEXTURE_2D, [[gl.TEXTURE_2D, brdfLutTexture]])
 // prettier-ignore
-const diffuse = createTexture(gl, gl.TEXTURE_CUBE_MAP, diffuseTextures.map((s, i) => [gl.TEXTURE_CUBE_MAP_POSITIVE_X + i, s]))
+const diffuse = createTexture(gl.TEXTURE_CUBE_MAP, diffuseTextures.map((s, i) => [gl.TEXTURE_CUBE_MAP_POSITIVE_X + i, s]))
 // prettier-ignore
-const specular = createTexture(gl, gl.TEXTURE_CUBE_MAP, specularTextures.map((s, i) => [gl.TEXTURE_CUBE_MAP_POSITIVE_X + i, s]))
+const specular = createTexture(gl.TEXTURE_CUBE_MAP, specularTextures.map((s, i) => [gl.TEXTURE_CUBE_MAP_POSITIVE_X + i, s]))
 
 gl.activeTexture(gl.TEXTURE5)
 gl.bindTexture(gl.TEXTURE_2D, brdf)
@@ -67,24 +71,52 @@ document.getElementById('loading')?.remove()
 computeCamera()
 render()
 
+function* applyTransform(
+	skin: Skin,
+	matrix: mat4,
+	nodeIndex: number,
+	transforms: Record<string, mat4>
+): Generator<{ idx: number; mat: mat4 }> {
+	const node = model.nodes[nodeIndex]
+	const xfIdx = skin.joints.indexOf(node.id)
+
+	if (transforms[node.id] !== undefined) {
+		mat4.multiply(matrix, matrix, transforms[node.id])
+	}
+
+	const ibt = skin.inverseBindTransforms[xfIdx]
+	if (ibt) {
+		const appl = mat4.create()
+		mat4.multiply(appl, matrix, ibt)
+		yield { idx: xfIdx, mat: appl }
+	}
+
+	for (const childNode of node.children) {
+		yield* applyTransform(skin, mat4.clone(matrix), childNode, transforms)
+	}
+}
+
 function render() {
 	gl.clear(gl.COLOR_BUFFER_BIT)
-	gl.uniform3f(uniforms.cameraPosition, camPos[0], camPos[1], camPos[2])
-	gl.uniformMatrix4fv(uniforms.projectionMatrix, false, pMatrix)
 	gl.uniformMatrix4fv(uniforms.viewMatrix, false, vMatrix)
+	gl.uniformMatrix4fv(uniforms.projectionMatrix, false, pMatrix)
+	gl.uniform3f(uniforms.cameraPosition, camPos[0], camPos[1], camPos[2])
 
+	const root = model.rootNode
 	const animation = getActiveAnimations('default', model.name)
 	if (animation) {
-		const animationTransforms = getAnimationTransforms(model, animation, blendTime)
-		applyToSkin(model, animationTransforms).forEach((x, i) => {
-			gl.uniformMatrix4fv(uniforms.jointTransform[i], false, x)
-		})
+		const axfs = getAnimationTransforms(model, animation, blendTime)
+		const applied = model.skins.flatMap((skin) => [...applyTransform(skin, mat4.create(), root, axfs)])
+		for (const { idx, mat } of applied) {
+			gl.uniformMatrix4fv(uniforms.jointTransform[idx], false, mat)
+		}
+
 		gl.uniform1i(uniforms.isAnimated, 1)
 	} else {
 		gl.uniform1i(uniforms.isAnimated, 0)
 	}
 
-	renderModel(model.rootNode, model.nodes[model.rootNode].localBindTransform)
+	renderModel(model.rootNode, model.nodes[root].localBindTransform)
 	advanceAnimation(performance.now() - lastFrame)
 	requestAnimationFrame(() => {
 		render()
@@ -195,25 +227,28 @@ function renderModel(node: number, transform: mat4) {
 
 		const m = model.materials[mesh.material]
 		if (m) {
-			applyTexture(gl, m.baseColorTexture, 0, uniforms.baseColorTexture, uniforms.hasBaseColorTexture)
-			// prettier-ignore
-			applyTexture(gl, m.metallicRoughnessTexture, 1, uniforms.metallicRoughnessTexture, uniforms.hasMetallicRoughnessTexture)
-			applyTexture(gl, m.emissiveTexture, 2, uniforms.emissiveTexture, uniforms.hasEmissiveTexture)
-			applyTexture(gl, m.normalTexture, 3, uniforms.normalTexture, uniforms.hasNormalTexture)
-			applyTexture(gl, m.occlusionTexture, 4, uniforms.occlusionTexture, uniforms.hasOcclusionTexture)
-			// prettier-ignore
-			gl.uniform4f(uniforms.baseColorFactor, m.baseColorFactor[0], m.baseColorFactor[1], m.baseColorFactor[2], m.baseColorFactor[3])
 			gl.uniform1f(uniforms.metallicFactor, m.metallicFactor)
 			gl.uniform1f(uniforms.roughnessFactor, m.roughnessFactor)
-			gl.uniform3f(uniforms.emissiveFactor, m.emissiveFactor[0], m.emissiveFactor[1], m.emissiveFactor[2])
+			gl.uniform3f(uniforms.emissiveFactor, ...m.emissiveFactor)
+			gl.uniform4f(uniforms.baseColorFactor, ...m.baseColorFactor)
+
+			applyTexture(m.baseColorTexture, 0, uniforms.baseColorTexture, uniforms.hasBaseColorTexture)
+			// prettier-ignore
+			applyTexture(m.metallicRoughnessTexture, 1, uniforms.metallicRoughnessTexture, uniforms.hasMetallicRoughnessTexture)
+			applyTexture(m.emissiveTexture, 2, uniforms.emissiveTexture, uniforms.hasEmissiveTexture)
+			applyTexture(m.normalTexture, 3, uniforms.normalTexture, uniforms.hasNormalTexture)
+			applyTexture(m.occlusionTexture, 4, uniforms.occlusionTexture, uniforms.hasOcclusionTexture)
 		}
 
-		bindBuffer(gl, attributes.position, mesh.positions)
-		bindBuffer(gl, attributes.normal, mesh.normals)
-		bindBuffer(gl, attributes.tangent, mesh.tangents)
-		bindBuffer(gl, attributes.texCoord, mesh.texCoord)
-		bindBuffer(gl, attributes.joints, mesh.joints)
-		bindBuffer(gl, attributes.weights, mesh.weights)
+		for (const k of attribNames) {
+			const buf = mesh[k]
+			if (!buf) continue
+			const pos = attributes[k]
+			gl.enableVertexAttribArray(pos)
+			gl.bindBuffer(gl.ARRAY_BUFFER, buf.buffer)
+			gl.vertexAttribPointer(pos, buf.size, buf.type, false, 0, 0)
+		}
+
 		gl.uniformMatrix4fv(uniforms.modelMatrix, false, transform)
 
 		if (mesh.indices) {

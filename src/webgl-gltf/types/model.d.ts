@@ -94,12 +94,12 @@ export interface Mesh {
  */
 export interface Material {
 	baseColorTexture: WebGLTexture | null
-	baseColorFactor: vec4
+	baseColorFactor: [number, number, number, number]
 	metallicRoughnessTexture: WebGLTexture | null
 	metallicFactor: number
 	roughnessFactor: number
 	emissiveTexture: WebGLTexture | null
-	emissiveFactor: vec3
+	emissiveFactor: [number, number, number]
 	normalTexture: WebGLTexture | null
 	occlusionTexture: WebGLTexture | null
 }

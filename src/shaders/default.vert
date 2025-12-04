@@ -1,9 +1,9 @@
 #version 100
 
-attribute vec3 vPosition;
-attribute vec3 vNormal;
-attribute vec4 vTangent;
 attribute vec2 vTexCoord;
+attribute vec3 vPositions;
+attribute vec3 vNormals;
+attribute vec4 vTangents;
 attribute vec4 vJoints;
 attribute vec4 vWeights;
 
@@ -28,8 +28,8 @@ void main() {
             vWeights.w * uJointTransform[int(vJoints.w)];
     }
 
-    vec3 n = normalize(vNormal);
-    vec4 t = normalize(vTangent);
+    vec3 n = normalize(vNormals);
+    vec4 t = normalize(vTangents);
 
     mat4 normalMatrix = skinMatrix;
     vec3 normalW = normalize(vec3(normalMatrix * vec4(n.xyz, 0.0)));
@@ -37,9 +37,9 @@ void main() {
     vec3 bitangentW = cross(normalW, tangentW) * t.w;
 
     tangent = mat3(tangentW, bitangentW, normalW);
-    normal = normalize(mat3(normalMatrix) * vec3(skinMatrix * vec4(vNormal, 1.0)));
+    normal = normalize(mat3(normalMatrix) * vec3(skinMatrix * vec4(vNormals, 1.0)));
     texCoord = vTexCoord;
-    position = vec3(mat3(uModelMatrix) * vPosition);
+    position = vec3(mat3(uModelMatrix) * vPositions);
 
-    gl_Position = uProjectionMatrix * uViewMatrix * uModelMatrix * skinMatrix * vec4(vPosition, 1.0);
+    gl_Position = uProjectionMatrix * uViewMatrix * uModelMatrix * skinMatrix * vec4(vPositions, 1.0);
 }

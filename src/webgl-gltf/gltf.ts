@@ -1,6 +1,6 @@
 import { mat4, quat, vec3, vec4 } from 'gl-matrix'
 import * as utils from '../utils.js'
-import { createTexture } from '../gl.js'
+import { createTexture } from '../gl/texture.js'
 
 import * as gltf from './types/gltf'
 import type { GlTf, Accessor } from './types/gltf'
@@ -34,7 +34,7 @@ export enum BufferType {
 const getTexture = async (gl: WebGL2RenderingContext, uri: string) => {
 	const img = await utils.getImage(uri)
 	const ext = gl.getExtension('EXT_texture_filter_anisotropic')
-	return createTexture(gl, gl.TEXTURE_2D, [[gl.TEXTURE_2D, img]], ext)
+	return createTexture(gl.TEXTURE_2D, [[gl.TEXTURE_2D, img]], ext)
 }
 
 const readBufferFromFile = (gltf: GlTf, buffers: ArrayBuffer[], accessor: Accessor) => {
@@ -226,12 +226,7 @@ const loadMaterial = async (
 			baseColorTexture = await getTexture(gl, `${dir}/${uri}`)
 		}
 		if (pbr.baseColorFactor) {
-			baseColorFactor = vec4.fromValues(
-				pbr.baseColorFactor[0],
-				pbr.baseColorFactor[1],
-				pbr.baseColorFactor[2],
-				pbr.baseColorFactor[3]
-			)
+			baseColorFactor = pbr.baseColorFactor
 		}
 
 		if (pbr.metallicRoughnessTexture) {
@@ -259,7 +254,7 @@ const loadMaterial = async (
 	}
 
 	if (material.emissiveFactor) {
-		emissiveFactor = vec3.fromValues(material.emissiveFactor[0], material.emissiveFactor[1], material.emissiveFactor[2])
+		emissiveFactor = material.emissiveFactor
 	}
 
 	return {
