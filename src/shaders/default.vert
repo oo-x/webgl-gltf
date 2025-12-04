@@ -1,11 +1,11 @@
-#version 100
+#version 300 es
 
-attribute vec2 vTexCoord;
-attribute vec3 vPositions;
-attribute vec3 vNormals;
-attribute vec4 vTangents;
-attribute vec4 vJoints;
-attribute vec4 vWeights;
+in vec2 vTexCoord;
+in vec3 vPositions;
+in vec3 vNormals;
+in vec4 vTangents;
+in vec4 vJoints;
+in vec4 vWeights;
 
 uniform mat4 uProjectionMatrix;
 uniform mat4 uViewMatrix;
@@ -14,32 +14,32 @@ uniform mat4 uJointTransform[25];
 
 uniform int uIsAnimated;
 
-varying vec2 texCoord;
-varying vec3 normal;
-varying vec3 position;
-varying mat3 tangent;
+out vec2 texCoord;
+out vec3 normal;
+out vec3 position;
+out mat3 tangent;
 
 void main() {
-    mat4 skinMatrix = mat4(1.0);
-    if (uIsAnimated == 1) {
-        skinMatrix = vWeights.x * uJointTransform[int(vJoints.x)] +
-            vWeights.y * uJointTransform[int(vJoints.y)] +
-            vWeights.z * uJointTransform[int(vJoints.z)] +
-            vWeights.w * uJointTransform[int(vJoints.w)];
-    }
+	mat4 skinMatrix = mat4(1.0);
+	if (uIsAnimated == 1) {
+		skinMatrix = vWeights.x * uJointTransform[int(vJoints.x)] +
+			vWeights.y * uJointTransform[int(vJoints.y)] +
+			vWeights.z * uJointTransform[int(vJoints.z)] +
+			vWeights.w * uJointTransform[int(vJoints.w)];
+	}
 
-    vec3 n = normalize(vNormals);
-    vec4 t = normalize(vTangents);
+	vec3 n = normalize(vNormals);
+	vec4 t = normalize(vTangents);
 
-    mat4 normalMatrix = skinMatrix;
-    vec3 normalW = normalize(vec3(normalMatrix * vec4(n.xyz, 0.0)));
-    vec3 tangentW = normalize(vec3(uModelMatrix * vec4(t.xyz, 0.0)));
-    vec3 bitangentW = cross(normalW, tangentW) * t.w;
+	mat4 normalMatrix = skinMatrix;
+	vec3 normalW = normalize(vec3(normalMatrix * vec4(n.xyz, 0.0)));
+	vec3 tangentW = normalize(vec3(uModelMatrix * vec4(t.xyz, 0.0)));
+	vec3 bitangentW = cross(normalW, tangentW) * t.w;
 
-    tangent = mat3(tangentW, bitangentW, normalW);
-    normal = normalize(mat3(normalMatrix) * vec3(skinMatrix * vec4(vNormals, 1.0)));
-    texCoord = vTexCoord;
-    position = vec3(mat3(uModelMatrix) * vPositions);
+	tangent = mat3(tangentW, bitangentW, normalW);
+	normal = normalize(mat3(normalMatrix) * vec3(skinMatrix * vec4(vNormals, 1.0)));
+	texCoord = vTexCoord;
+	position = vec3(mat3(uModelMatrix) * vPositions);
 
-    gl_Position = uProjectionMatrix * uViewMatrix * uModelMatrix * skinMatrix * vec4(vPositions, 1.0);
+	gl_Position = uProjectionMatrix * uViewMatrix * uModelMatrix * skinMatrix * vec4(vPositions, 1.0);
 }

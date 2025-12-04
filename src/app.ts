@@ -1,4 +1,4 @@
-import { mat4, vec3 } from 'gl-matrix'
+import { mat4 } from 'gl-matrix'
 import { pushAnimation, getActiveAnimations, advanceAnimation } from './webgl-gltf/animation'
 
 import * as utils from './utils.js'
@@ -7,7 +7,7 @@ import { setCanvas } from './gl/context.js'
 import { init, attribNames } from './gl.js'
 import { createTexture, applyTexture } from './gl/texture.js'
 import { getAnimationTransforms } from './anim/transform.js'
-import type { Skin } from './webgl-gltf/types/model'
+import type { Node, Skin } from './webgl-gltf/types/model'
 
 const track = 'track'
 const blendTime = 300
@@ -19,13 +19,8 @@ const { gl, uniforms, attributes } = init(canvas)
 
 let lastFrame = 0
 
-const cam = {
-	rY: 0.0,
-	rX: 0.0,
-	distance: 3.0,
-}
+const cam = { x: 0, y: 0, z: 0, rY: 0.0, rX: 0.0, distance: 3.0 }
 
-const camPos = [0, 0, 0]
 const pMatrix = mat4.create()
 const vMatrix = mat4.create()
 
@@ -100,7 +95,7 @@ function render() {
 	gl.clear(gl.COLOR_BUFFER_BIT)
 	gl.uniformMatrix4fv(uniforms.viewMatrix, false, vMatrix)
 	gl.uniformMatrix4fv(uniforms.projectionMatrix, false, pMatrix)
-	gl.uniform3f(uniforms.cameraPosition, camPos[0], camPos[1], camPos[2])
+	gl.uniform3f(uniforms.cameraPosition, cam.x, cam.y, cam.z)
 
 	const root = model.rootNode
 	const animation = getActiveAnimations('default', model.name)
@@ -116,7 +111,43 @@ function render() {
 		gl.uniform1i(uniforms.isAnimated, 0)
 	}
 
-	renderModel(model.rootNode, model.nodes[root].localBindTransform)
+	gl.uniformMatrix4fv(uniforms.modelMatrix, false, model.nodes[root].localBindTransform)
+
+	for (const n of walk(root)) {
+		if (n.mesh === undefined) continue
+		const mesh = model.meshes[n.mesh]
+		const m = model.materials[mesh.material]
+		if (m) {
+			gl.uniform1f(uniforms.metallicFactor, m.metallicFactor)
+			gl.uniform1f(uniforms.roughnessFactor, m.roughnessFactor)
+			gl.uniform3f(uniforms.emissiveFactor, ...m.emissiveFactor)
+			gl.uniform4f(uniforms.baseColorFactor, ...m.baseColorFactor)
+
+			applyTexture(m.baseColorTexture, 0, uniforms.baseColorTexture, uniforms.hasBaseColorTexture)
+			// prettier-ignore
+			applyTexture(m.metallicRoughnessTexture, 1, uniforms.metallicRoughnessTexture, uniforms.hasMetallicRoughnessTexture)
+			applyTexture(m.emissiveTexture, 2, uniforms.emissiveTexture, uniforms.hasEmissiveTexture)
+			applyTexture(m.normalTexture, 3, uniforms.normalTexture, uniforms.hasNormalTexture)
+			applyTexture(m.occlusionTexture, 4, uniforms.occlusionTexture, uniforms.hasOcclusionTexture)
+		}
+
+		for (const k of attribNames) {
+			const buf = mesh[k]
+			if (!buf) continue
+			const pos = attributes[k]
+			gl.enableVertexAttribArray(pos)
+			gl.bindBuffer(gl.ARRAY_BUFFER, buf.buffer)
+			gl.vertexAttribPointer(pos, buf.size, buf.type, false, 0, 0)
+		}
+
+		if (mesh.indices) {
+			gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, mesh.indices)
+			gl.drawElements(gl.TRIANGLES, mesh.elementCount, gl.UNSIGNED_SHORT, 0)
+		} else {
+			gl.drawArrays(gl.TRIANGLES, 0, mesh.elementCount)
+		}
+	}
+
 	advanceAnimation(performance.now() - lastFrame)
 	requestAnimationFrame(() => {
 		render()
@@ -209,55 +240,25 @@ function setSize() {
 
 function computeCamera() {
 	const cx = Math.cos(-cam.rX)
-	camPos[0] = cam.distance * Math.sin(-cam.rY) * cx
-	camPos[1] = cam.distance * Math.sin(cam.rX)
-	camPos[2] = cam.distance * Math.cos(-cam.rY) * cx
+	cam.x = cam.distance * Math.sin(-cam.rY) * cx
+	cam.y = cam.distance * Math.sin(cam.rX)
+	cam.z = cam.distance * Math.cos(-cam.rY) * cx
 
 	const vm = mat4.create()
-	mat4.translate(vm, vm, vec3.fromValues(0.0, 0.0, -cam.distance))
+	mat4.translate(vm, vm, [0.0, 0.0, -cam.distance])
 	mat4.rotateX(vm, vm, cam.rX)
 	mat4.rotateY(vMatrix, vm, cam.rY)
 	mat4.perspective(pMatrix, 45.0, canvas.width / canvas.height, 0.1, 100.0)
 }
 
-function renderModel(node: number, transform: mat4) {
-	const meshIdx = model.nodes[node].mesh
-	if (meshIdx !== undefined) {
-		const mesh = model.meshes[meshIdx]
-
-		const m = model.materials[mesh.material]
-		if (m) {
-			gl.uniform1f(uniforms.metallicFactor, m.metallicFactor)
-			gl.uniform1f(uniforms.roughnessFactor, m.roughnessFactor)
-			gl.uniform3f(uniforms.emissiveFactor, ...m.emissiveFactor)
-			gl.uniform4f(uniforms.baseColorFactor, ...m.baseColorFactor)
-
-			applyTexture(m.baseColorTexture, 0, uniforms.baseColorTexture, uniforms.hasBaseColorTexture)
-			// prettier-ignore
-			applyTexture(m.metallicRoughnessTexture, 1, uniforms.metallicRoughnessTexture, uniforms.hasMetallicRoughnessTexture)
-			applyTexture(m.emissiveTexture, 2, uniforms.emissiveTexture, uniforms.hasEmissiveTexture)
-			applyTexture(m.normalTexture, 3, uniforms.normalTexture, uniforms.hasNormalTexture)
-			applyTexture(m.occlusionTexture, 4, uniforms.occlusionTexture, uniforms.hasOcclusionTexture)
-		}
-
-		for (const k of attribNames) {
-			const buf = mesh[k]
-			if (!buf) continue
-			const pos = attributes[k]
-			gl.enableVertexAttribArray(pos)
-			gl.bindBuffer(gl.ARRAY_BUFFER, buf.buffer)
-			gl.vertexAttribPointer(pos, buf.size, buf.type, false, 0, 0)
-		}
-
-		gl.uniformMatrix4fv(uniforms.modelMatrix, false, transform)
-
-		if (mesh.indices) {
-			gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, mesh.indices)
-			gl.drawElements(gl.TRIANGLES, mesh.elementCount, gl.UNSIGNED_SHORT, 0)
-		} else {
-			gl.drawArrays(gl.TRIANGLES, 0, mesh.elementCount)
+function* walk(idx: number): Generator<Node> {
+	const n = model.nodes[idx]
+	if (n) {
+		yield n
+		if (n.children?.length) {
+			for (const c of n.children) {
+				yield* walk(c)
+			}
 		}
 	}
-
-	for (const c of model.nodes[node].children) renderModel(c, transform)
 }

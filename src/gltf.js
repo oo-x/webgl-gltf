@@ -120,18 +120,9 @@ export async function loadModel(uri) {
 		gltf.nodes?.map((n, id) => {
 			const transform = mat4.create()
 
-			if (n.translation) {
-				mat4.translate(transform, transform, [n.translation[0], n.translation[1], n.translation[1]])
-			}
-
-			if (n.rotation) {
-				mat4.multiply(transform, mat4.fromQuat(mat4.create(), n.rotation), transform)
-			}
-
-			if (n.scale) {
-				mat4.scale(transform, transform, [n.scale[0], n.scale[1], n.scale[1]])
-			}
-
+			if (n.translation) mat4.translate(transform, transform, n.translation)
+			if (n.rotation) mat4.multiply(transform, mat4.fromQuat(mat4.create(), n.rotation), transform)
+			if (n.scale) mat4.scale(transform, transform, n.scale)
 			//if (n.matrix !== undefined) createMat4FromArray(n.matrix)
 
 			return {
