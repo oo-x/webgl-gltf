@@ -1,10 +1,12 @@
-import * as gltf from './types/gltf'
 import { mat4, quat, vec3, vec4 } from 'gl-matrix'
-import { createMat4FromArray } from './mat.js'
+import * as utils from '../utils.js'
+import { createTexture } from '../gl.js'
+
+import * as gltf from './types/gltf'
 import type { GlTf, Accessor } from './types/gltf'
 import type { Channel, Node, Mesh, Model, KeyFrame, Skin, Material, GLBuffer, Animation } from './types/model'
 
-type GLContext = WebGLRenderingContext | WebGL2RenderingContext
+type GLContext = WebGL2RenderingContext
 
 const accessorSizes = {
 	SCALAR: 1,
@@ -29,51 +31,10 @@ export enum BufferType {
 	Short = 5123,
 }
 
-const resolveEmbeddedBuffer = (uri: string): string => {
-	const content = uri.split(',')[1]
-	const binaryData = atob(content)
-	const arrayBuffer = new ArrayBuffer(binaryData.length)
-	const uint8Array = new Uint8Array(arrayBuffer)
-
-	for (let i = 0; i < binaryData.length; i++) {
-		uint8Array[i] = binaryData.charCodeAt(i)
-	}
-
-	const blob = new Blob([uint8Array], { type: 'application/octet-stream' }) // Crea un Blob
-	return URL.createObjectURL(blob)
-}
-
-const EMBEDDED_DATA_REGEXP = /(.*)data:(.*?)(;base64)?,(.*)$/
-
-const getBuffer = async (path: string, buffer: string) => {
-	const dir = path.split('/').slice(0, -1).join('/')
-	const finalPath = EMBEDDED_DATA_REGEXP.test(buffer) ? resolveEmbeddedBuffer(buffer) : `${dir}/${buffer}`
-	const response = await fetch(finalPath)
-	return await response.arrayBuffer()
-}
-
-const getTexture = async (gl: GLContext, uri: string) => {
-	return new Promise<WebGLTexture>((resolve) => {
-		const img = new Image()
-		img.onload = () => {
-			const texture = gl.createTexture()
-			gl.bindTexture(gl.TEXTURE_2D, texture)
-			gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img)
-			gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR)
-			gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
-
-			const ext = gl.getExtension('EXT_texture_filter_anisotropic')
-			if (ext) {
-				const max = gl.getParameter(ext.MAX_TEXTURE_MAX_ANISOTROPY_EXT)
-				gl.texParameterf(gl.TEXTURE_2D, ext.TEXTURE_MAX_ANISOTROPY_EXT, max)
-			}
-
-			gl.generateMipmap(gl.TEXTURE_2D)
-			resolve(texture!)
-		}
-		img.src = EMBEDDED_DATA_REGEXP.test(uri) ? resolveEmbeddedBuffer(uri) : uri
-		img.crossOrigin = 'undefined'
-	})
+const getTexture = async (gl: WebGL2RenderingContext, uri: string) => {
+	const img = await utils.getImage(uri)
+	const ext = gl.getExtension('EXT_texture_filter_anisotropic')
+	return createTexture(gl, gl.TEXTURE_2D, [[gl.TEXTURE_2D, img]], ext)
 }
 
 const readBufferFromFile = (gltf: GlTf, buffers: ArrayBuffer[], accessor: Accessor) => {
@@ -141,7 +102,7 @@ const loadNodes = (index: number, node: gltf.Node): Node => {
 
 	if (node.scale !== undefined)
 		mat4.scale(transform, transform, vec3.fromValues(node.scale[0], node.scale[1], node.scale[1]))
-	if (node.matrix !== undefined) createMat4FromArray(node.matrix)
+	//if (node.matrix !== undefined) createMat4FromArray(node.matrix)
 
 	return {
 		id: index,
@@ -327,7 +288,7 @@ export const loadModel = async (gl: GLContext, uri: string) => {
 		throw new Error('GLTF File is missing accessors')
 	}
 
-	const buffers = await Promise.all(gltf.buffers!.map(async (b) => await getBuffer(uri, b.uri!)))
+	const buffers = await Promise.all(gltf.buffers!.map(async (b) => await utils.getBuffer(uri, b.uri!)))
 
 	const scene = gltf.scenes![gltf.scene || 0]
 	const meshes = gltf.meshes!.map((m) => loadMesh(gl, gltf, m, buffers))
@@ -344,9 +305,7 @@ export const loadModel = async (gl: GLContext, uri: string) => {
 	const skins = gltf.skins
 		? gltf.skins.map((x) => {
 				const bindTransforms = readBufferFromFile(gltf, buffers, gltf.accessors![x.inverseBindMatrices!])
-				const inverseBindTransforms = x.joints.map((_, i) =>
-					createMat4FromArray(bindTransforms.data.slice(i * 16, i * 16 + 16))
-				)
+				const inverseBindTransforms = x.joints.map((_, i) => bindTransforms.data.slice(i * 16, i * 16 + 16))
 
 				return {
 					joints: x.joints,
@@ -372,8 +331,8 @@ export const loadModel = async (gl: GLContext, uri: string) => {
  * @param gl Web GL context
  * @param model Model to dispose
  */
-export const dispose = (gl: GLContext, model: Model) => {
-	model.meshes.forEach((m) => {
+export const dispose = (gl: WebGL2RenderingContext, model: Model) => {
+	for (const m of model.meshes) {
 		gl.deleteBuffer(m.indices)
 		if (m.joints) gl.deleteBuffer(m.joints.buffer)
 		if (m.normals) gl.deleteBuffer(m.normals.buffer)
@@ -388,9 +347,9 @@ export const dispose = (gl: GLContext, model: Model) => {
 		m.tangents = null
 		m.texCoord = null
 		m.weights = null
-	})
+	}
 
-	model.materials.forEach((m) => {
+	for (const m of model.materials) {
 		if (m.baseColorTexture) gl.deleteTexture(m.baseColorTexture)
 		if (m.emissiveTexture) gl.deleteTexture(m.emissiveTexture)
 		if (m.normalTexture) gl.deleteTexture(m.normalTexture)
@@ -402,5 +361,5 @@ export const dispose = (gl: GLContext, model: Model) => {
 		m.normalTexture = null
 		m.occlusionTexture = null
 		m.metallicRoughnessTexture = null
-	})
+	}
 }

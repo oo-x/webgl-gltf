@@ -4,21 +4,18 @@ export interface ActiveAnimation {
 }
 
 interface Animations {
-	[model: string]: ActiveAnimation[][]
+	[model: string]: Record<string, ActiveAnimation[]>
 }
 
 const activeAnimations: Animations = {}
 
+/**
+ * @param {string} track
+ * @param {string} key
+ */
 const getAnimationFromLast = (track: string, key: string, offset = 0) => {
-	if (
-		activeAnimations[track] === undefined ||
-		activeAnimations[track][key] === undefined ||
-		activeAnimations[track][key].length - offset - 1 < 0
-	) {
-		return null
-	}
-
-	return activeAnimations[track][key][activeAnimations[track][key].length - offset - 1]
+	const active = activeAnimations[track]?.[key]
+	return active?.[active.length - offset - 1]
 }
 
 /**
@@ -30,15 +27,11 @@ const getAnimationFromLast = (track: string, key: string, offset = 0) => {
  */
 export const pushAnimation = (track: string, key: string, model: string, animation: string) => {
 	const k = `${key}_${model}`
-	if (!activeAnimations[track]) activeAnimations[track] = []
+	if (!activeAnimations[track]) activeAnimations[track] = {}
 	if (!activeAnimations[track][k]) activeAnimations[track][k] = []
 	if (getAnimationFromLast(track, k)?.key === animation) return
 
-	activeAnimations[track][k].push({
-		key: animation,
-		elapsed: 0,
-	})
-
+	activeAnimations[track][k].push({ key: animation, elapsed: 0 })
 	activeAnimations[track][k].slice(activeAnimations[track][k].length - 2)
 }
 
@@ -48,15 +41,15 @@ export const pushAnimation = (track: string, key: string, model: string, animati
  * @param model GLTF Model
  */
 export const getActiveAnimations = (key: string, model: string) => {
+	if (!Object.keys(activeAnimations).length) return null
+
 	const k = `${key}_${model}`
 	const aa = {}
 
-	if (Object.keys(activeAnimations).length === 0) return null
-
-	Object.keys(activeAnimations).forEach((c) => {
-		if (!activeAnimations[c][k]) return
-		aa[c] = activeAnimations[c][k].slice(activeAnimations[c][k].length - 2)
-	})
+	for (const [c, anim] of Object.entries(activeAnimations)) {
+		if (!anim[k]) continue
+		aa[c] = anim[k].slice(anim[k].length - 2)
+	}
 
 	return aa
 }
@@ -67,15 +60,15 @@ export const getActiveAnimations = (key: string, model: string) => {
  * @param key Animation set key
  */
 export const advanceAnimation = (elapsed: number, key?: string) => {
-	Object.keys(activeAnimations).forEach((c) => {
-		Object.keys(activeAnimations[c]).forEach((m) => {
-			if (key && m.indexOf(key) !== 0) return
+	for (const [c, anim] of Object.entries(activeAnimations)) {
+		for (const m of Object.keys(anim)) {
+			if (key && m.indexOf(key) !== 0) continue
 
 			const current = getAnimationFromLast(c, m)
 			const previous = getAnimationFromLast(c, m, 1)
 
 			if (current) current.elapsed += elapsed
 			if (previous) previous.elapsed += elapsed
-		})
-	})
+		}
+	}
 }
