@@ -16,7 +16,7 @@ export function resolveEmbeddedBuffer(uri) {
 
 /**
  * @param {string} path
- * @param {string} buffer
+ * @param {string} [buffer]
  */
 export async function getBuffer(path, buffer) {
 	const dir = path.split('/').slice(0, -1).join('/')

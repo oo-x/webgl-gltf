@@ -1,8 +1,8 @@
 import { mat4, vec3 } from 'gl-matrix'
-import { loadModel } from './webgl-gltf/gltf'
 import { pushAnimation, getActiveAnimations, advanceAnimation } from './webgl-gltf/animation'
 
 import * as utils from './utils.js'
+import { loadModel } from './gltf.js'
 import { setCanvas } from './gl/context.js'
 import { init, attribNames } from './gl.js'
 import { createTexture, applyTexture } from './gl/texture.js'
@@ -35,7 +35,7 @@ const specularTextures = await Promise.all(names.map((n) => utils.getImage(`envi
 
 const urlParams = new URLSearchParams(window.location.search)
 const modelName = urlParams.get('model') || 'robot'
-const model = await loadModel(gl, `/models/${modelName}/${modelName}.gltf`)
+const model = await loadModel(`/models/${modelName}/${modelName}.gltf`)
 const anims = Object.keys(model.animations)
 if (anims.length) {
 	pushAnimation(track, 'default', model.name, anims[0])
