@@ -45,10 +45,7 @@ const uniformNames = /** @type {const} */ ([
 /** @param {string} n */
 const gln = (n, p = 'u') => `${p}${n[0].toUpperCase()}${n.slice(1)}`
 
-/**
- * @param {HTMLCanvasElement} canvas
- */
-export function init(canvas) {
+export function init() {
 	const gl = getGl()
 	gl.clearColor(0.3, 0.3, 0.3, 1)
 	gl.enable(gl.DEPTH_TEST)

@@ -3,7 +3,7 @@ import * as utils from './utils.js'
 import { loadModel } from './gltf.js'
 import { setCanvas } from './gl/context.js'
 import { init, attribNames } from './gl.js'
-import { createTexture, applyTexture } from './gl/texture.js'
+import { createTexture, bindTexture } from './gl/texture.js'
 import { getAnimationTransforms } from './anim/transform.js'
 import type { Node, Skin } from './webgl-gltf/types/model'
 
@@ -19,7 +19,7 @@ const activeAnimations: Animations = {}
 
 setCanvas('#canvas')
 const canvas = document.getElementById('canvas') as HTMLCanvasElement
-const { gl, uniforms, attributes } = init(canvas)
+const { gl, uniforms, attributes } = init()
 
 let lastFrame = 0
 
@@ -127,12 +127,12 @@ function render() {
 			gl.uniform3f(uniforms.emissiveFactor, ...m.emissiveFactor)
 			gl.uniform4f(uniforms.baseColorFactor, ...m.baseColorFactor)
 
-			applyTexture(m.baseColorTexture, 0, uniforms.baseColorTexture, uniforms.hasBaseColorTexture)
+			bindTexture(m.baseColorTexture, 0, uniforms.baseColorTexture, uniforms.hasBaseColorTexture)
 			// prettier-ignore
-			applyTexture(m.metallicRoughnessTexture, 1, uniforms.metallicRoughnessTexture, uniforms.hasMetallicRoughnessTexture)
-			applyTexture(m.emissiveTexture, 2, uniforms.emissiveTexture, uniforms.hasEmissiveTexture)
-			applyTexture(m.normalTexture, 3, uniforms.normalTexture, uniforms.hasNormalTexture)
-			applyTexture(m.occlusionTexture, 4, uniforms.occlusionTexture, uniforms.hasOcclusionTexture)
+			bindTexture(m.metallicRoughnessTexture, 1, uniforms.metallicRoughnessTexture, uniforms.hasMetallicRoughnessTexture)
+			bindTexture(m.emissiveTexture, 2, uniforms.emissiveTexture, uniforms.hasEmissiveTexture)
+			bindTexture(m.normalTexture, 3, uniforms.normalTexture, uniforms.hasNormalTexture)
+			bindTexture(m.occlusionTexture, 4, uniforms.occlusionTexture, uniforms.hasOcclusionTexture)
 		}
 
 		for (const k of attribNames) {

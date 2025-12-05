@@ -34,7 +34,7 @@ export function createTexture(type, textures, ext) {
  * @param {WebGLUniformLocation} uniform
  * @param {WebGLUniformLocation} enabled
  */
-export function applyTexture(tex, target, uniform, enabled) {
+export function bindTexture(tex, target, uniform, enabled) {
 	const gl = getGl()
 	gl.uniform1i(enabled, tex ? 1 : 0)
 	if (!tex) return
