@@ -4,6 +4,10 @@ let gl = null
 /** @type {HTMLCanvasElement | null} */
 let canvas = null
 
+const onContextLost = () => {
+	gl = null
+}
+
 /** @param {HTMLCanvasElement | string} c */
 export function setCanvas(c) {
 	if (typeof c === 'string') {
@@ -11,6 +15,7 @@ export function setCanvas(c) {
 	} else {
 		canvas = c
 	}
+	canvas.addEventListener('webglcontextlost', onContextLost, false)
 }
 
 export function getGl() {

@@ -16,10 +16,7 @@ export const ONE_4 = /** @type {Vec4} */ ([1, 1, 1, 1])
 export const ID_3 = ZERO_3
 export const ID_Q = /** @type {Vec4} */ ([0, 0, 0, 1])
 export const ID_M4 = /** @type {Mat4} */ ([...ZERO_M4])
-ID_M4[0] = 1
-ID_M4[5] = 1
-ID_M4[10] = 1
-ID_M4[15] = 1
+ID_M4[0] = ID_M4[5] = ID_M4[10] = ID_M4[15] = 1
 
 export const vec3 = (v = ID_3) => /** @type {Vec3} */ ([...v])
 export const quat = (v = ID_Q) => /** @type {Vec4} */ ([...v])
@@ -174,9 +171,6 @@ export function transformFromTRS(out, trs) {
 
 /**
  * Generates a perspective projection matrix with the given bounds.
- * The near/far clip planes correspond to a normalized device coordinate Z range of [-1, 1],
- * which matches WebGL/OpenGL's clip volume.
- * Passing null/undefined/no value for far will generate infinite projection matrix.
  *
  * @param {Mat4 | null} out mat4 frustum matrix will be written into
  * @param {number} fovy Vertical field of view in radians
@@ -187,6 +181,7 @@ export function transformFromTRS(out, trs) {
 export function perspective(out, fovy, aspect, near, far) {
 	const f = 1.0 / Math.tan(fovy / 2)
 	const o = out ?? mat4()
+	const nf = far != null && far !== Infinity ? 1 / (near - far) : 0
 	o[0] = f / aspect
 	o[1] = 0
 	o[2] = 0
@@ -197,19 +192,93 @@ export function perspective(out, fovy, aspect, near, far) {
 	o[7] = 0
 	o[8] = 0
 	o[9] = 0
+	o[10] = nf ? (far + near) * nf : -1
 	o[11] = -1
 	o[12] = 0
 	o[13] = 0
+	o[14] = 2 * near * (nf ? far * nf : -1)
 	o[15] = 0
+	return o
+}
 
-	if (far != null && far !== Infinity) {
-		const nf = 1 / (near - far)
-		o[10] = (far + near) * nf
-		o[14] = 2 * far * near * nf
-	} else {
-		o[10] = -1
-		o[14] = -2 * near
+/**
+ * @param {Mat4 | null} out
+ * @param {Mat4} a
+ * @param {number} rad
+ */
+export function rotateX(out, a, rad) {
+	const s = Math.sin(rad)
+	const c = Math.cos(rad)
+	const a10 = a[4]
+	const a11 = a[5]
+	const a12 = a[6]
+	const a13 = a[7]
+	const a20 = a[8]
+	const a21 = a[9]
+	const a22 = a[10]
+	const a23 = a[11]
+
+	const o = out ?? mat4()
+
+	if (a !== o) {
+		o[0] = a[0]
+		o[1] = a[1]
+		o[2] = a[2]
+		o[3] = a[3]
+		o[12] = a[12]
+		o[13] = a[13]
+		o[14] = a[14]
+		o[15] = a[15]
 	}
 
+	o[4] = a10 * c + a20 * s
+	o[5] = a11 * c + a21 * s
+	o[6] = a12 * c + a22 * s
+	o[7] = a13 * c + a23 * s
+	o[8] = a20 * c - a10 * s
+	o[9] = a21 * c - a11 * s
+	o[10] = a22 * c - a12 * s
+	o[11] = a23 * c - a13 * s
+	return o
+}
+
+/**
+ * @param {Mat4 | null} out
+ * @param {Mat4} a
+ * @param {number} rad
+ */
+export function rotateY(out, a, rad) {
+	const s = Math.sin(rad)
+	const c = Math.cos(rad)
+	const a00 = a[0]
+	const a01 = a[1]
+	const a02 = a[2]
+	const a03 = a[3]
+	const a20 = a[8]
+	const a21 = a[9]
+	const a22 = a[10]
+	const a23 = a[11]
+
+	const o = out ?? mat4()
+
+	if (a !== o) {
+		o[4] = a[4]
+		o[5] = a[5]
+		o[6] = a[6]
+		o[7] = a[7]
+		o[12] = a[12]
+		o[13] = a[13]
+		o[14] = a[14]
+		o[15] = a[15]
+	}
+
+	o[0] = a00 * c - a20 * s
+	o[1] = a01 * c - a21 * s
+	o[2] = a02 * c - a22 * s
+	o[3] = a03 * c - a23 * s
+	o[8] = a00 * s + a20 * c
+	o[9] = a01 * s + a21 * c
+	o[10] = a02 * s + a22 * c
+	o[11] = a03 * s + a23 * c
 	return o
 }
