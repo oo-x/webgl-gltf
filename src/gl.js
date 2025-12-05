@@ -62,8 +62,6 @@ export function init() {
 		attributes: attribNames.map((n) => gln(n, 'v')),
 	})
 
-	console.log(prog)
-
 	const unl = uniformNames.length
 
 	const uniforms = {

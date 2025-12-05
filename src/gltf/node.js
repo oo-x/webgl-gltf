@@ -8,6 +8,6 @@ export function processNode(raw) {
 	return {
 		...n,
 		children,
-		matrix: m ?? transformFromTRS(n),
+		matrix: m ?? transformFromTRS(null, n),
 	}
 }

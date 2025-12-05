@@ -4,9 +4,6 @@
   "scripts": {
     "dev": "vite"
   },
-  "dependencies": {
-    "gl-matrix": "^3.3.0"
-  },
   "devDependencies": {
     "vite": "^7.2.5"
   }

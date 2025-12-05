@@ -1,4 +1,4 @@
-import type { mat4, vec3, quat, vec4 } from 'gl-matrix'
+import type { Vec3, Vec4, Mat4 } from '../../gltf/types'
 
 /**
  * Model root
@@ -20,7 +20,7 @@ export interface Node {
 	id: number
 	name: string
 	children: number[]
-	matrix: mat4
+	matrix: Mat4
 	skin?: number
 	mesh?: number
 }
@@ -30,7 +30,7 @@ export interface Node {
  */
 export interface Skin {
 	joints: number[]
-	inverseBindTransforms: mat4[]
+	inverseBindTransforms: Mat4[]
 }
 
 /**
@@ -61,7 +61,7 @@ export interface Transform {
  */
 export interface KeyFrame {
 	time: number
-	transform: vec3 | quat
+	transform: Vec3 | Vec4
 	type: 'translation' | 'rotation' | 'scale'
 }
 

@@ -1,10 +1,12 @@
-import { mat4 } from 'gl-matrix'
+import * as math from './math.js'
 import * as utils from './utils.js'
 import { loadModel } from './gltf.js'
 import { setCanvas } from './gl/context.js'
 import { init, attribNames } from './gl.js'
 import { createTexture, bindTexture } from './gl/texture.js'
 import { getAnimationTransforms } from './anim/transform.js'
+
+import type { Mat4 } from './gltf/types'
 import type { Node, Skin } from './webgl-gltf/types/model'
 
 const track = 'track'
@@ -25,8 +27,8 @@ let lastFrame = 0
 
 const cam = { x: 0, y: 0, z: 0, rY: 0.0, rX: 0.0, distance: 3.0 }
 
-const pMatrix = mat4.create()
-const vMatrix = mat4.create()
+const pMatrix = math.mat4()
+let vMatrix = math.mat4()
 
 const brdfLutTexture = await utils.getImage('environment/brdf_lut.png')
 const diffuseTextures = await Promise.all(names.map((n) => utils.getImage(`environment/diffuse_${n}.jpg`)))
@@ -72,26 +74,24 @@ render()
 
 function* applyTransform(
 	skin: Skin,
-	matrix: mat4,
+	matrix: Mat4,
 	nodeIndex: number,
-	transforms: Record<string, mat4>
-): Generator<{ idx: number; mat: mat4 }> {
+	transforms: Record<string, Mat4>
+): Generator<{ idx: number; mat: Mat4 }> {
 	const node = model.nodes[nodeIndex]
 	const xfIdx = skin.joints.indexOf(node.id)
 
 	if (transforms[node.id] !== undefined) {
-		mat4.multiply(matrix, matrix, transforms[node.id])
+		math.multiplyMat4(matrix, matrix, transforms[node.id])
 	}
 
 	const ibt = skin.inverseBindTransforms[xfIdx]
 	if (ibt) {
-		const appl = mat4.create()
-		mat4.multiply(appl, matrix, ibt)
-		yield { idx: xfIdx, mat: appl }
+		yield { idx: xfIdx, mat: math.multiplyMat4(null, matrix, ibt) }
 	}
 
 	for (const childNode of node.children) {
-		yield* applyTransform(skin, mat4.clone(matrix), childNode, transforms)
+		yield* applyTransform(skin, math.mat4(matrix), childNode, transforms)
 	}
 }
 
@@ -105,7 +105,7 @@ function render() {
 	const animation = getActiveAnimations('default', model.name)
 	if (animation) {
 		const axfs = getAnimationTransforms(model, animation, blendTime)
-		const applied = model.skins.flatMap((skin) => [...applyTransform(skin, mat4.create(), root, axfs)])
+		const applied = model.skins.flatMap((skin) => [...applyTransform(skin, math.mat4(), root, axfs)])
 		for (const { idx, mat } of applied) {
 			gl.uniformMatrix4fv(uniforms.jointTransform[idx], false, mat)
 		}
@@ -243,16 +243,61 @@ function setSize() {
 }
 
 function computeCamera() {
-	const cx = Math.cos(-cam.rX)
-	cam.x = cam.distance * Math.sin(-cam.rY) * cx
-	cam.y = cam.distance * Math.sin(cam.rX)
-	cam.z = cam.distance * Math.cos(-cam.rY) * cx
+	const d = cam.distance
+	const sy = Math.sin(cam.rY)
+	const sx = Math.sin(cam.rX)
+	const cx = Math.cos(cam.rX)
+	const cy = Math.cos(cam.rY)
 
-	const vm = mat4.create()
-	mat4.translate(vm, vm, [0.0, 0.0, -cam.distance])
-	mat4.rotateX(vm, vm, cam.rX)
-	mat4.rotateY(vMatrix, vm, cam.rY)
-	mat4.perspective(pMatrix, 45.0, canvas.width / canvas.height, 0.1, 100.0)
+	cam.x = -d * sy * cx
+	cam.y = d * sx
+	cam.z = d * cy * cx
+
+	const vm = math.mat4()
+	vMatrix[12] = vm[8] * -d + vm[12]
+	vMatrix[13] = vm[9] * -d + vm[13]
+	vMatrix[14] = vm[10] * -d + vm[14]
+	vMatrix[15] = vm[11] * -d + vm[15]
+
+	let a00 = vm[0]
+	let a01 = vm[1]
+	let a02 = vm[2]
+	let a03 = vm[3]
+	let a10 = vm[4]
+	let a11 = vm[5]
+	let a12 = vm[6]
+	let a13 = vm[7]
+	let a20 = vm[8]
+	let a21 = vm[9]
+	let a22 = vm[10]
+	let a23 = vm[11]
+
+	vm[8] = a20 * cx - a10 * sx
+	vm[9] = a21 * cx - a11 * sx
+	vm[10] = a22 * cx - a12 * sx
+	vm[11] = a23 * cx - a13 * sx
+
+	a20 = vm[8]
+	a21 = vm[9]
+	a22 = vm[10]
+	a23 = vm[11]
+
+	vMatrix[0] = a00 * cy - a20 * sy
+	vMatrix[1] = a01 * cy - a21 * sy
+	vMatrix[2] = a02 * cy - a22 * sy
+	vMatrix[3] = a03 * cy - a23 * sy
+
+	vMatrix[4] = a10 * cx + a20 * sx
+	vMatrix[5] = a11 * cx + a21 * sx
+	vMatrix[6] = a12 * cx + a22 * sx
+	vMatrix[7] = a13 * cx + a23 * sx
+
+	vMatrix[8] = a00 * sy + a20 * cy
+	vMatrix[9] = a01 * sy + a21 * cy
+	vMatrix[10] = a02 * sy + a22 * cy
+	vMatrix[11] = a03 * sy + a23 * cy
+
+	math.perspective(pMatrix, 45.0, canvas.width / canvas.height, 0.1, 100.0)
 }
 
 function* walk(idx: number): Generator<Node> {
@@ -271,7 +316,7 @@ function* walk(idx: number): Generator<Node> {
  * @param {string} track
  * @param {string} key
  */
-function getAnimationFromLast (track: string, key: string, offset = 0) {
+function getAnimationFromLast(track: string, key: string, offset = 0) {
 	const active = activeAnimations[track]?.[key]
 	return active?.[active.length - offset - 1]
 }
