@@ -28,9 +28,8 @@ let lastFrame = 0
 const cam = { x: 0, y: 0, z: 0, rY: 0.0, rX: 0.0, distance: 3.0 }
 
 const pMatrix = math.mat4()
-let vMatrix = math.mat4()
+const vMatrix = math.mat4()
 
-const brdfLutTexture = await utils.getImage('environment/brdf_lut.png')
 const diffuseTextures = await Promise.all(names.map((n) => utils.getImage(`environment/diffuse_${n}.jpg`)))
 const specularTextures = await Promise.all(names.map((n) => utils.getImage(`environment/specular_${n}.jpg`)))
 
@@ -48,17 +47,18 @@ if (anims.length) {
 		ui.appendChild(btn)
 	}
 }
+
 console.log(model)
 
-const brdf = createTexture(gl.TEXTURE_2D, [[gl.TEXTURE_2D, brdfLutTexture]])
 // prettier-ignore
 const diffuse = createTexture(gl.TEXTURE_CUBE_MAP, diffuseTextures.map((s, i) => [gl.TEXTURE_CUBE_MAP_POSITIVE_X + i, s]))
 // prettier-ignore
 const specular = createTexture(gl.TEXTURE_CUBE_MAP, specularTextures.map((s, i) => [gl.TEXTURE_CUBE_MAP_POSITIVE_X + i, s]))
 
-gl.activeTexture(gl.TEXTURE5)
-gl.bindTexture(gl.TEXTURE_2D, brdf)
-gl.uniform1i(uniforms.brdfLut, 5)
+utils.getImage('environment/brdf_lut.png').then((img) => {
+	const brdf = createTexture(gl.TEXTURE_2D, [[gl.TEXTURE_2D, img]])
+	bindTexture(brdf, 5, uniforms.brdfLut)
+})
 
 gl.activeTexture(gl.TEXTURE6)
 gl.bindTexture(gl.TEXTURE_CUBE_MAP, diffuse)
@@ -239,6 +239,7 @@ function setSize() {
 	const devicePixelRatio = window.devicePixelRatio || 1
 	canvas.width = window.innerWidth * devicePixelRatio
 	canvas.height = window.innerHeight * devicePixelRatio
+	math.perspective(pMatrix, 45.0, canvas.width / canvas.height, 0.1, 100.0)
 	gl.viewport(0, 0, canvas.width, canvas.height)
 }
 
@@ -249,55 +250,14 @@ function computeCamera() {
 	const cx = Math.cos(cam.rX)
 	const cy = Math.cos(cam.rY)
 
-	cam.x = -d * sy * cx
+	cam.x = d * -sy * cx
 	cam.y = d * sx
 	cam.z = d * cy * cx
 
 	const vm = math.mat4()
-	vMatrix[12] = vm[8] * -d + vm[12]
-	vMatrix[13] = vm[9] * -d + vm[13]
-	vMatrix[14] = vm[10] * -d + vm[14]
-	vMatrix[15] = vm[11] * -d + vm[15]
-
-	let a00 = vm[0]
-	let a01 = vm[1]
-	let a02 = vm[2]
-	let a03 = vm[3]
-	let a10 = vm[4]
-	let a11 = vm[5]
-	let a12 = vm[6]
-	let a13 = vm[7]
-	let a20 = vm[8]
-	let a21 = vm[9]
-	let a22 = vm[10]
-	let a23 = vm[11]
-
-	vm[8] = a20 * cx - a10 * sx
-	vm[9] = a21 * cx - a11 * sx
-	vm[10] = a22 * cx - a12 * sx
-	vm[11] = a23 * cx - a13 * sx
-
-	a20 = vm[8]
-	a21 = vm[9]
-	a22 = vm[10]
-	a23 = vm[11]
-
-	vMatrix[0] = a00 * cy - a20 * sy
-	vMatrix[1] = a01 * cy - a21 * sy
-	vMatrix[2] = a02 * cy - a22 * sy
-	vMatrix[3] = a03 * cy - a23 * sy
-
-	vMatrix[4] = a10 * cx + a20 * sx
-	vMatrix[5] = a11 * cx + a21 * sx
-	vMatrix[6] = a12 * cx + a22 * sx
-	vMatrix[7] = a13 * cx + a23 * sx
-
-	vMatrix[8] = a00 * sy + a20 * cy
-	vMatrix[9] = a01 * sy + a21 * cy
-	vMatrix[10] = a02 * sy + a22 * cy
-	vMatrix[11] = a03 * sy + a23 * cy
-
-	math.perspective(pMatrix, 45.0, canvas.width / canvas.height, 0.1, 100.0)
+	vm[14] -= d
+	math.rotateX(vm, vm, cam.rX)
+	math.rotateY(vMatrix, vm, cam.rY)
 }
 
 function* walk(idx: number): Generator<Node> {

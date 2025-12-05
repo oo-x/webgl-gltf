@@ -32,13 +32,26 @@ export function createTexture(type, textures, ext) {
  * @param {WebGLTexture | null} tex
  * @param {number} target
  * @param {WebGLUniformLocation} uniform
- * @param {WebGLUniformLocation} enabled
+ * @param {WebGLUniformLocation} [enabled]
+ * @param {number} [type]
  */
-export function bindTexture(tex, target, uniform, enabled) {
+export function bindTexture(tex, target, uniform, enabled, type) {
 	const gl = getGl()
-	gl.uniform1i(enabled, tex ? 1 : 0)
+	if (enabled) gl.uniform1i(enabled, tex ? 1 : 0)
 	if (!tex) return
 	gl.activeTexture(gl.TEXTURE0 + target)
-	gl.bindTexture(gl.TEXTURE_2D, tex)
+	gl.bindTexture(type ?? gl.TEXTURE_2D, tex)
 	gl.uniform1i(uniform, target)
+}
+
+/**
+ * @param {Array<TexImageSource | Promise<TexImageSource>>} srcs
+ * @param {number} target
+ * @param {WebGLUniformLocation} uniform
+ */
+export async function bindCubeMap(srcs, target, uniform) {
+	const gl = getGl()
+	const all = await Promise.all(srcs.map(async (s, i) => [gl.TEXTURE_CUBE_MAP_POSITIVE_X + i, await s]))
+	const tex = createTexture(gl.TEXTURE_CUBE_MAP, all)
+	bindTexture(tex, target, uniform, undefined, gl.TEXTURE_CUBE_MAP)
 }
