@@ -140,3 +140,30 @@ export type RawMaterial = {
 
 	[k: string]: unknown
 }
+
+export type KeyFrameInfo = {
+	translation: { t: number; v: Vec3 }[]
+	rotation: { t: number; v: Vec4 }[]
+	scale: { t: number; v: Vec3 }[]
+	weights?: { t: number }[]
+}
+
+export type AnimationChannel = {
+	sampler: number
+	target: {
+		node: number
+		path: 'translation' | 'rotation' | 'scale' | 'weights'
+	}
+}
+
+export type AnimationSampler = {
+	input: number
+	output: number
+	interpolation: 'LINEAR' | 'STEP' | 'CUBICSPLINE'
+}
+
+export type Animation = {
+	name?: string
+	channels: AnimationChannel[]
+	samplers: AnimationSampler[]
+}

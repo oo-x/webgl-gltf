@@ -1,9 +1,7 @@
+import * as math from './math.js'
 import * as utils from './utils.js'
 import { getGl } from './gl/context.js'
 import { createTexture } from './gl/texture.js'
-import { processNode } from './gltf/node.js'
-import { makeReadBuffer } from './gltf/buffer.js'
-import { processMaterial } from './gltf/material.js'
 
 /**
  * Loads a GLTF model and its assets
@@ -92,42 +90,41 @@ export async function loadModel(uri) {
 
 	const nodes = gltf.nodes?.map((n, id) => ({ id, ...processNode(n) })) ?? []
 
-	/** @type {import('./webgl-gltf/types/model').Animation} */
+	/** @type {Record<string, Map<number, import('./types').KeyFrameInfo>>} */
 	const animations = {}
-	gltf.animations?.forEach((anim) => {
-		const channels = anim.channels.map((c) => {
-			const sampler = anim.samplers[c.sampler]
-			return {
-				node: c.target.node,
-				type: c.target.path,
-				interpolation: sampler.interpolation ?? 'LINEAR',
-				time: readBuf(sampler.input),
-				buffer: readBuf(sampler.output),
-			}
-		})
 
-		/** @type {import('./webgl-gltf/types/model').Channel} */
-		const c = {}
-		for (const ch of channels) {
-			if (ch.node === undefined) continue
-			if (c[ch.node] === undefined) {
-				c[ch.node] = { translation: [], rotation: [], scale: [] }
+	gltf.animations?.forEach((ani, i) => {
+		/** @type {Map<number, import('./types').KeyFrameInfo>} */
+		const channels = new Map()
+
+		/** @type {import('./types').Animation} */
+		const anim = ani
+
+		for (const ch of anim.channels) {
+			const node = ch.target?.node
+			if (node === undefined) continue
+			if (!channels.has(node)) {
+				channels.set(node, { translation: [], rotation: [], scale: [] })
 			}
 
-			const buf = ch.buffer
-			const cubic = ch.interpolation === 'CUBICSPLINE'
+			const path = ch.target.path
+			const sampler = anim.samplers[ch.sampler]
+			const buf = readBuf(sampler.output)
+			const time = readBuf(sampler.input)
+			const len = time.data.length
+			const rot = path === 'rotation'
+			const cubic = sampler.interpolation === 'CUBICSPLINE'
 
-			for (let i = 0; i < ch.time.data.length; ++i) {
+			for (let i = 0; i < len; ++i) {
 				const n = i * buf.size * (cubic ? 3 : 1) + (cubic ? buf.size : 0)
-				c[ch.node][ch.type].push({
-					type: ch.type,
-					time: ch.time.data[i],
-					transform: [...buf.data.slice(n, n + (ch.type === 'rotation' ? 4 : 3))],
+				channels.get(node)?.[path].push({
+					t: time.data[i],
+					v: [...buf.data.slice(n, n + (rot ? 4 : 3))],
 				})
 			}
 		}
 
-		animations[anim.name] = c
+		animations[anim.name || `anim ${i}`] = channels
 	})
 
 	const name = uri.split('/').slice(-1)[0]
@@ -183,5 +180,83 @@ export const dispose = (model) => {
 		m.normalTexture = null
 		m.occlusionTexture = null
 		m.metallicRoughnessTexture = null
+	}
+}
+
+/** @param {{ index?: number }} [t] */
+const getImgIdx = (t) => (t?.index === undefined ? null : t.index)
+
+/**
+ * @param {import('./types').RawMaterial} m
+ */
+export function processMaterial(m) {
+	const pbr = m.pbrMetallicRoughness
+	return {
+		emissiveFactor: m.emissiveFactor ?? math.ONE_3,
+		baseColorFactor: pbr?.baseColorFactor ?? math.ONE_4,
+		metallicFactor: pbr?.metallicFactor ?? 1.0,
+		roughnessFactor: pbr ? pbr.roughnessFactor ?? 1 : 0,
+		textures: {
+			normal: getImgIdx(m.normalTexture),
+			emissive: getImgIdx(m.emissiveTexture),
+			occlusion: getImgIdx(m.occlusionTexture),
+			baseColor: getImgIdx(pbr?.baseColorTexture),
+			metallicRoughness: getImgIdx(pbr?.metallicRoughnessTexture),
+		},
+	}
+}
+
+/**
+ * @param {import('./types').RawNode} raw
+ */
+export function processNode(raw) {
+	const { children = [], matrix: m, ...n } = raw
+	return {
+		...n,
+		children,
+		matrix: m ?? math.transformFromTRS(null, n),
+	}
+}
+
+export const BUF_SHORT = 5123
+export const BUF_FLOAT = 5126
+
+const accessorSizes = /** @type {const} */ ({
+	SCALAR: 1,
+	VEC2: 2,
+	VEC3: 3,
+	VEC4: 4,
+	MAT2: 4,
+	MAT3: 9,
+	MAT4: 16,
+})
+
+/**
+ * @param {ArrayBuffer[]} buffers
+ * @param {import('./types').BufferView[]} bufferViews
+ * @param {import('./types').Accessor[]} accessors
+ */
+export function makeReadBuffer(buffers, bufferViews, accessors) {
+	/**
+	 * @param {number} idx
+	 */
+	return function read(idx) {
+		const acc = accessors[idx]
+		if (acc?.bufferView === undefined) throw new Error('undefined bufferView')
+		const view = bufferViews[acc.bufferView]
+		const type = acc.type
+		const size = accessorSizes[type]
+		const componentType = acc.componentType
+
+		const Arr = componentType == BUF_FLOAT ? Float32Array : Int16Array
+		const offset = (acc.byteOffset || 0) + (view.byteOffset || 0)
+		const data = new Arr(buffers[view.buffer], offset, acc.count * size)
+
+		return {
+			size,
+			data,
+			type,
+			componentType,
+		}
 	}
 }

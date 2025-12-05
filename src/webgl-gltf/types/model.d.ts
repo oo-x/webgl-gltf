@@ -1,4 +1,4 @@
-import type { Vec3, Vec4, Mat4 } from '../../gltf/types'
+import type { Vec3, Vec4, Mat4 } from '../../types'
 
 /**
  * Model root

@@ -1,7 +1,7 @@
 /**
- * @typedef {import('./gltf/types').Vec3} Vec3
- * @typedef {import('./gltf/types').Vec4} Vec4
- * @typedef {import('./gltf/types').Mat4} Mat4
+ * @typedef {import('./types').Vec3} Vec3
+ * @typedef {import('./types').Vec4} Vec4
+ * @typedef {import('./types').Mat4} Mat4
  */
 
 export const EPSILON = 0.000001
@@ -129,7 +129,7 @@ export function multiplyMat4(out, a, b) {
 
 /**
  * @param {Mat4 | null} out
- * @param {import('./gltf/types').TRS} trs
+ * @param {import('./types').TRS} trs
  */
 export function transformFromTRS(out, trs) {
 	const v = trs.translation ?? ID_3

@@ -3,21 +3,13 @@ import * as utils from './utils.js'
 import { loadModel } from './gltf.js'
 import { setCanvas } from './gl/context.js'
 import { init, attribNames } from './gl.js'
-import { createTexture, bindTexture } from './gl/texture.js'
+import { createTexture, bindTexture, bindCubeMap } from './gl/texture.js'
 import { getAnimationTransforms } from './anim/transform.js'
 
-import type { Mat4 } from './gltf/types'
+import type { Mat4 } from './types'
 import type { Node, Skin } from './webgl-gltf/types/model'
 
-const track = 'track'
-const blendTime = 300
-const names = ['right', 'left', 'top', 'bottom', 'front', 'back']
-
-interface Animations {
-	[model: string]: Record<string, { key: string; elapsed: number }[]>
-}
-
-const activeAnimations: Animations = {}
+const activeAnimations: { key: string; elapsed: number }[] = []
 
 setCanvas('#canvas')
 const canvas = document.getElementById('canvas') as HTMLCanvasElement
@@ -30,70 +22,41 @@ const cam = { x: 0, y: 0, z: 0, rY: 0.0, rX: 0.0, distance: 3.0 }
 const pMatrix = math.mat4()
 const vMatrix = math.mat4()
 
-const diffuseTextures = await Promise.all(names.map((n) => utils.getImage(`environment/diffuse_${n}.jpg`)))
-const specularTextures = await Promise.all(names.map((n) => utils.getImage(`environment/specular_${n}.jpg`)))
-
 const urlParams = new URLSearchParams(window.location.search)
 const modelName = urlParams.get('model') || 'robot'
 const model = await loadModel(`/models/${modelName}/${modelName}.gltf`)
 const anims = Object.keys(model.animations)
 if (anims.length) {
-	pushAnimation(track, 'default', model.name, anims[0])
+	pushAnimation(anims[0])
 	const ui = document.getElementById('ui') as HTMLElement
 	for (const a of anims) {
 		const btn = document.createElement('button')
 		btn.innerText = a
-		btn.addEventListener('click', () => pushAnimation(track, 'default', model.name, a))
+		btn.addEventListener('click', () => pushAnimation(a))
 		ui.appendChild(btn)
 	}
 }
 
 console.log(model)
 
-// prettier-ignore
-const diffuse = createTexture(gl.TEXTURE_CUBE_MAP, diffuseTextures.map((s, i) => [gl.TEXTURE_CUBE_MAP_POSITIVE_X + i, s]))
-// prettier-ignore
-const specular = createTexture(gl.TEXTURE_CUBE_MAP, specularTextures.map((s, i) => [gl.TEXTURE_CUBE_MAP_POSITIVE_X + i, s]))
+const names = ['right', 'left', 'top', 'bottom', 'front', 'back']
+const diffuse = names.map((n) => utils.getImage(`environment/diffuse_${n}.jpg`))
+const specular = names.map((n) => utils.getImage(`environment/specular_${n}.jpg`))
 
-utils.getImage('environment/brdf_lut.png').then((img) => {
-	const brdf = createTexture(gl.TEXTURE_2D, [[gl.TEXTURE_2D, img]])
-	bindTexture(brdf, 5, uniforms.brdfLut)
-})
-
-gl.activeTexture(gl.TEXTURE6)
-gl.bindTexture(gl.TEXTURE_CUBE_MAP, diffuse)
-gl.uniform1i(uniforms.environmentDiffuse, 6)
-
-gl.activeTexture(gl.TEXTURE7)
-gl.bindTexture(gl.TEXTURE_CUBE_MAP, specular)
-gl.uniform1i(uniforms.environmentSpecular, 7)
+await Promise.all([
+	utils.getImage('environment/brdf_lut.png').then((img) => {
+		const brdf = createTexture(gl.TEXTURE_2D, [[gl.TEXTURE_2D, img]])
+		bindTexture(brdf, 5, uniforms.brdfLut)
+	}),
+	bindCubeMap(diffuse, 6, uniforms.environmentDiffuse),
+	bindCubeMap(specular, 7, uniforms.environmentSpecular),
+])
 
 document.getElementById('loading')?.remove()
+window.onresize = () => setSize()
 computeCamera()
+setSize()
 render()
-
-function* applyTransform(
-	skin: Skin,
-	matrix: Mat4,
-	nodeIndex: number,
-	transforms: Record<string, Mat4>
-): Generator<{ idx: number; mat: Mat4 }> {
-	const node = model.nodes[nodeIndex]
-	const xfIdx = skin.joints.indexOf(node.id)
-
-	if (transforms[node.id] !== undefined) {
-		math.multiplyMat4(matrix, matrix, transforms[node.id])
-	}
-
-	const ibt = skin.inverseBindTransforms[xfIdx]
-	if (ibt) {
-		yield { idx: xfIdx, mat: math.multiplyMat4(null, matrix, ibt) }
-	}
-
-	for (const childNode of node.children) {
-		yield* applyTransform(skin, math.mat4(matrix), childNode, transforms)
-	}
-}
 
 function render() {
 	gl.clear(gl.COLOR_BUFFER_BIT)
@@ -102,9 +65,10 @@ function render() {
 	gl.uniform3f(uniforms.cameraPosition, cam.x, cam.y, cam.z)
 
 	const root = model.rootNode
-	const animation = getActiveAnimations('default', model.name)
-	if (animation) {
-		const axfs = getAnimationTransforms(model, animation, blendTime)
+	const active = activeAnimations.slice(-2)
+	if (active.length) {
+		// @ts-expect-error
+		const axfs = new Map(getAnimationTransforms(model.animations, active))
 		const applied = model.skins.flatMap((skin) => [...applyTransform(skin, math.mat4(), root, axfs)])
 		for (const { idx, mat } of applied) {
 			gl.uniformMatrix4fv(uniforms.jointTransform[idx], false, mat)
@@ -232,9 +196,6 @@ canvas.addEventListener('touchend', (event) => {
 	lastPosition = undefined
 })
 
-window.onresize = () => setSize()
-setSize()
-
 function setSize() {
 	const devicePixelRatio = window.devicePixelRatio || 1
 	canvas.width = window.innerWidth * devicePixelRatio
@@ -273,65 +234,49 @@ function* walk(idx: number): Generator<Node> {
 }
 
 /**
- * @param {string} track
- * @param {string} key
- */
-function getAnimationFromLast(track: string, key: string, offset = 0) {
-	const active = activeAnimations[track]?.[key]
-	return active?.[active.length - offset - 1]
-}
-
-/**
  * Sets the active animation
- * @param track Animation track
- * @param key Animation set key
- * @param model GLTF Model
  * @param animation Animation key
  */
-function pushAnimation(track: string, key: string, model: string, animation: string) {
-	const k = `${key}_${model}`
-	if (!activeAnimations[track]) activeAnimations[track] = {}
-	if (!activeAnimations[track][k]) activeAnimations[track][k] = []
-	if (getAnimationFromLast(track, k)?.key === animation) return
-
-	activeAnimations[track][k].push({ key: animation, elapsed: 0 })
-	activeAnimations[track][k].slice(activeAnimations[track][k].length - 2)
-}
-
-/**
- * Gets the current and previous animation
- * @param key Animation set key
- * @param model GLTF Model
- */
-function getActiveAnimations(key: string, model: string) {
-	if (!Object.keys(activeAnimations).length) return null
-
-	const k = `${key}_${model}`
-	const aa = {}
-
-	for (const [c, anim] of Object.entries(activeAnimations)) {
-		if (!anim[k]) continue
-		aa[c] = anim[k].slice(anim[k].length - 2)
-	}
-
-	return aa
+function pushAnimation(key: string) {
+	const len = activeAnimations.length
+	if (activeAnimations[len - 1]?.key === key) return
+	if (len > 2) activeAnimations.shift()
+	activeAnimations.push({ key, elapsed: 0 })
 }
 
 /**
  * Advances the animation
  * @param elapsed Time elasped since last update
- * @param key Animation set key
  */
-function advanceAnimation(elapsed: number, key?: string) {
-	for (const [c, anim] of Object.entries(activeAnimations)) {
-		for (const m of Object.keys(anim)) {
-			if (key && m.indexOf(key) !== 0) continue
+function advanceAnimation(elapsed: number) {
+	const len = activeAnimations.length
+	const current = activeAnimations[len - 1]
+	if (current) current.elapsed += elapsed
 
-			const current = getAnimationFromLast(c, m)
-			const previous = getAnimationFromLast(c, m, 1)
+	const previous = activeAnimations[len - 2]
+	if (previous) previous.elapsed += elapsed
+}
 
-			if (current) current.elapsed += elapsed
-			if (previous) previous.elapsed += elapsed
-		}
+function* applyTransform(
+	skin: Skin,
+	matrix: Mat4,
+	nodeIndex: number,
+	transforms: Map<number, Mat4>
+): Generator<{ idx: number; mat: Mat4 }> {
+	const node = model.nodes[nodeIndex]
+	const xfIdx = skin.joints.indexOf(node.id)
+
+	const xf = transforms.get(node.id)
+	if (xf) {
+		math.multiplyMat4(matrix, matrix, xf)
+	}
+
+	const ibt = skin.inverseBindTransforms[xfIdx]
+	if (ibt) {
+		yield { idx: xfIdx, mat: math.multiplyMat4(null, matrix, ibt) }
+	}
+
+	for (const c of node.children) {
+		yield* applyTransform(skin, math.mat4(matrix), c, transforms)
 	}
 }
