@@ -20,7 +20,7 @@ export interface Node {
 	id: number
 	name: string
 	children: number[]
-	localBindTransform: mat4
+	matrix: mat4
 	skin?: number
 	mesh?: number
 }

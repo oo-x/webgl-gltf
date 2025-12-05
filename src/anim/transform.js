@@ -2,30 +2,22 @@ import { mat4, vec3, quat } from 'gl-matrix'
 
 /**
  * @param {import('../webgl-gltf/types/model').KeyFrame[]} keyFrames
- * @param {number} animationTime
- */
-const getPreviousAndNextKeyFrame = (keyFrames, animationTime) => {
-	let next = keyFrames[0]
-	let previous = keyFrames[0]
-
-	for (const frame of keyFrames) {
-		next = frame
-		if (next.time > animationTime) break
-		previous = frame
-	}
-
-	return [previous, next]
-}
-
-/**
- * @param {import('../webgl-gltf/types/model').KeyFrame[]} keyFrames
  * @param {number} duration
  */
 const getTransform = (keyFrames, duration) => {
 	if (keyFrames.length === 1) return keyFrames[0].transform
 
 	const animationTime = (duration / 1000.0) % keyFrames[keyFrames.length - 1].time
-	const [prev, next] = getPreviousAndNextKeyFrame(keyFrames, animationTime)
+
+	let next = keyFrames[0]
+	let prev = keyFrames[0]
+
+	for (const frame of keyFrames) {
+		next = frame
+		if (next.time > animationTime) break
+		prev = frame
+	}
+
 	const progression = (animationTime - prev.time) / (next.time - prev.time)
 
 	switch (prev.type) {
@@ -57,7 +49,7 @@ const get = (c, elapsed) => {
 /**
  * Blends two animations and returns their transform matrices
  * @param {import('../webgl-gltf/types/model').Model} model GLTF Model
- * @param {Record<string, import('../webgl-gltf/animation').ActiveAnimation[]>} activeAnimations Currently running animations
+ * @param {Record<string, { key: string; elapsed: number }[]>} activeAnimations Currently running animations
  * @param blendTime Length of animation blend in milliseconds
  */
 export function getAnimationTransforms(model, activeAnimations, blendTime = 0) {

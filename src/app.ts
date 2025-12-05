@@ -1,6 +1,4 @@
 import { mat4 } from 'gl-matrix'
-import { pushAnimation, getActiveAnimations, advanceAnimation } from './webgl-gltf/animation'
-
 import * as utils from './utils.js'
 import { loadModel } from './gltf.js'
 import { setCanvas } from './gl/context.js'
@@ -12,6 +10,12 @@ import type { Node, Skin } from './webgl-gltf/types/model'
 const track = 'track'
 const blendTime = 300
 const names = ['right', 'left', 'top', 'bottom', 'front', 'back']
+
+interface Animations {
+	[model: string]: Record<string, { key: string; elapsed: number }[]>
+}
+
+const activeAnimations: Animations = {}
 
 setCanvas('#canvas')
 const canvas = document.getElementById('canvas') as HTMLCanvasElement
@@ -111,7 +115,7 @@ function render() {
 		gl.uniform1i(uniforms.isAnimated, 0)
 	}
 
-	gl.uniformMatrix4fv(uniforms.modelMatrix, false, model.nodes[root].localBindTransform)
+	gl.uniformMatrix4fv(uniforms.modelMatrix, false, model.nodes[root].matrix)
 
 	for (const n of walk(root)) {
 		if (n.mesh === undefined) continue
@@ -259,6 +263,70 @@ function* walk(idx: number): Generator<Node> {
 			for (const c of n.children) {
 				yield* walk(c)
 			}
+		}
+	}
+}
+
+/**
+ * @param {string} track
+ * @param {string} key
+ */
+function getAnimationFromLast (track: string, key: string, offset = 0) {
+	const active = activeAnimations[track]?.[key]
+	return active?.[active.length - offset - 1]
+}
+
+/**
+ * Sets the active animation
+ * @param track Animation track
+ * @param key Animation set key
+ * @param model GLTF Model
+ * @param animation Animation key
+ */
+function pushAnimation(track: string, key: string, model: string, animation: string) {
+	const k = `${key}_${model}`
+	if (!activeAnimations[track]) activeAnimations[track] = {}
+	if (!activeAnimations[track][k]) activeAnimations[track][k] = []
+	if (getAnimationFromLast(track, k)?.key === animation) return
+
+	activeAnimations[track][k].push({ key: animation, elapsed: 0 })
+	activeAnimations[track][k].slice(activeAnimations[track][k].length - 2)
+}
+
+/**
+ * Gets the current and previous animation
+ * @param key Animation set key
+ * @param model GLTF Model
+ */
+function getActiveAnimations(key: string, model: string) {
+	if (!Object.keys(activeAnimations).length) return null
+
+	const k = `${key}_${model}`
+	const aa = {}
+
+	for (const [c, anim] of Object.entries(activeAnimations)) {
+		if (!anim[k]) continue
+		aa[c] = anim[k].slice(anim[k].length - 2)
+	}
+
+	return aa
+}
+
+/**
+ * Advances the animation
+ * @param elapsed Time elasped since last update
+ * @param key Animation set key
+ */
+function advanceAnimation(elapsed: number, key?: string) {
+	for (const [c, anim] of Object.entries(activeAnimations)) {
+		for (const m of Object.keys(anim)) {
+			if (key && m.indexOf(key) !== 0) continue
+
+			const current = getAnimationFromLast(c, m)
+			const previous = getAnimationFromLast(c, m, 1)
+
+			if (current) current.elapsed += elapsed
+			if (previous) previous.elapsed += elapsed
 		}
 	}
 }
