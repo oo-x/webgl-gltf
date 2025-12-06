@@ -33,6 +33,10 @@ export type RawNode = {
 }
 
 export type GlNode = {
+	mesh?: number
+
+	camera?: number
+
 	matrix: Mat4
 
 	children: NodeId[]

@@ -90,17 +90,13 @@ export async function loadModel(uri) {
 
 	const nodes = gltf.nodes?.map((n, id) => ({ id, ...processNode(n) })) ?? []
 
-	/** @type {Record<string, Map<number, import('./types').KeyFrameInfo>>} */
-	const animations = {}
-
-	gltf.animations?.forEach((ani, i) => {
+	const animations = gltf.animations?.map((ani) => {
 		/** @type {Map<number, import('./types').KeyFrameInfo>} */
 		const channels = new Map()
 
-		/** @type {import('./types').Animation} */
-		const anim = ani
+		const { samplers, channels: chn, ...anim } = /** @type {import('./types').Animation} */ (ani)
 
-		for (const ch of anim.channels) {
+		for (const ch of chn) {
 			const node = ch.target?.node
 			if (node === undefined) continue
 			if (!channels.has(node)) {
@@ -108,7 +104,7 @@ export async function loadModel(uri) {
 			}
 
 			const path = ch.target.path
-			const sampler = anim.samplers[ch.sampler]
+			const sampler = samplers[ch.sampler]
 			const buf = readBuf(sampler.output)
 			const time = readBuf(sampler.input)
 			const len = time.data.length
@@ -124,12 +120,15 @@ export async function loadModel(uri) {
 			}
 		}
 
-		animations[anim.name || `anim ${i}`] = channels
+		return {
+			...anim,
+			channels,
+		}
 	})
 
 	const name = uri.split('/').slice(-1)[0]
 
-	return /** @type {import('./webgl-gltf/types/model').Model} */ ({
+	return {
 		name,
 		rootNode: gltf.scenes?.[gltf.scene || 0]?.nodes?.[0],
 		meshes,
@@ -142,12 +141,12 @@ export async function loadModel(uri) {
 				const ibt = x.joints.map((_, i) => xfs.data.slice(i * 16, i * 16 + 16))
 				return { joints: x.joints, inverseBindTransforms: ibt }
 			}) ?? [],
-	})
+	}
 }
 
 /**
  * Deletes GL buffers and textures
- * @param {import('./webgl-gltf/types/model').Model} model Model to dispose
+ * @param {Awaited<ReturnType<typeof loadModel>>} model Model to dispose
  */
 export const dispose = (model) => {
 	const gl = getGl()
