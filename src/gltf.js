@@ -4,11 +4,16 @@ import { getGl } from './gl/context.js'
 import { createTexture } from './gl/texture.js'
 
 /**
+ * @typedef {import('./types').Vec3} Vec3
+ * @typedef {import('./types').Vec4} Vec4
+ * @typedef {import('./types').Mat4} Mat4
+ */
+
+/**
  * Loads a GLTF model and its assets
  * @param {string} uri URI to model
  */
 export async function loadModel(uri) {
-	/** @type {import('./webgl-gltf/types/gltf').GlTf} */
 	const gltf = await (await fetch(uri)).json()
 	const accessors = gltf.accessors
 	if (!accessors?.length) throw new Error('missing accessors')
@@ -258,4 +263,32 @@ export function makeReadBuffer(buffers, bufferViews, accessors) {
 			componentType,
 		}
 	}
+}
+
+/**
+ * @param {Awaited<ReturnType<typeof loadModel>>} model
+ */
+export function walker(model, transforms = null) {
+
+	/**
+	 * @param {number} idx
+	 * @param {Mat4 | null} matrix
+	 * @return {Generator<[import('./types').GlNode, Mat4 | null], void>}
+	 */
+	function* walk(idx, matrix) {
+		const n = model.nodes[idx]
+		if (n) {
+			if (matrix) {
+				math.multiplyMat4(matrix, matrix, transforms?.get(n.id) ?? n.matrix)
+			}
+			yield [n, matrix]
+			if (n.children?.length) {
+				for (const c of n.children) {
+					yield* walk(c, matrix ? math.mat4(matrix) : null)
+				}
+			}
+		}
+	}
+
+	return walk
 }

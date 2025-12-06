@@ -33,6 +33,8 @@ export type RawNode = {
 }
 
 export type GlNode = {
+	id: number
+
 	mesh?: number
 
 	camera?: number
